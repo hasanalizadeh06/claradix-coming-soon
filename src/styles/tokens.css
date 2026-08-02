@@ -1,0 +1,149 @@
+/*
+ * Design tokens.
+ *
+ * Values are inherited from the existing Claradix Tailwind config so this page
+ * and the main site are demonstrably the same brand — green.500 #7CFC00 and
+ * the dark ramp are lifted verbatim, not eyeballed.
+ */
+
+/*
+ * Figtree. Open apertures, rounded joins, a single-storey feel to the curves
+ * without tipping into a rounded novelty face. Warm at display sizes and calm
+ * at small ones, which is the combination this page needs: one enormous line
+ * and a handful of tiny labels.
+ *
+ * 19.7KB for the Latin subset — the lightest of the faces considered.
+ */
+@font-face {
+  font-family: "Figtree";
+  font-style: normal;
+  font-weight: 300 900;
+  font-display: swap;
+  src: url("/fonts/figtree.woff2") format("woff2-variations");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+:root {
+  /* Brand */
+  --green-500: #7cfc00;
+  --green-400: #a6fd3f;
+  --green-600: #5fd800;
+  --green-glow: rgba(124, 252, 0, 0.5);
+
+  /* Surface ramp */
+  --ink-900: #040610;
+  --ink-800: #070a13;
+  --ink-700: #0b0f18;
+  --ink-600: #10141d;
+  --ink-500: #171b22;
+  --surface: #2a3039;
+
+  /* Text */
+  --text-primary: #ffffff;
+  --text-secondary: #d8dcdf;
+  --text-muted: #8d9195;
+  --text-faint: #5c687a;
+
+  /* The email field's surface. Referenced by the autofill override too, so
+     the two can never drift apart. */
+  --field-bg: #0b1017;
+
+  --border-subtle: rgba(255, 255, 255, 0.12);
+  --border-accent: rgba(124, 252, 0, 0.35);
+
+  /*
+   * Fluid type scale, driven by whichever of the two viewport axes is the
+   * binding constraint.
+   *
+   * A vw-only scale sizes the headline for the width and ignores the height, so
+   * a 1440x700 laptop gets type meant for 1440x1000 and the footer is pushed
+   * off a page that cannot scroll. min(Xvw, Yvh) makes the shorter axis win
+   * when it needs to, which removes the need for height breakpoints entirely.
+   */
+  --step--2: clamp(0.68rem, min(0.58vw, 1.05vh), 0.82rem);
+  --step--1: clamp(0.76rem, min(0.62vw, 1.15vh), 0.9rem);
+  --step-0: clamp(0.88rem, min(0.72vw, 1.32vh), 1.06rem);
+  --step-1: clamp(1.05rem, min(1.32vw, 2.4vh), 1.75rem);
+  --step-2: clamp(1.3rem, min(1.9vw, 3.4vh), 2.2rem);
+  --step-headline: clamp(1.85rem, min(4.5vw, 7.8vh), 5.1rem);
+
+  --tracking-eyebrow: 0.34em;
+  /* Easier than the grotesk needed. Figtree's rounder forms already sit
+     close together, and over-tightening a soft face collapses the counters
+     that make it feel open in the first place. */
+  --tracking-headline: -0.032em;
+
+  /* Spacing. Vertical rhythm is height-aware for the same reason the type
+     scale is: it is what has to give when the viewport is short. */
+  --gutter: clamp(1.25rem, 0.6rem + 3vw, 5.5rem);
+  --gutter-block: clamp(0.9rem, min(1.4vw, 2.4vh), 2.4rem);
+  --rhythm-sm: clamp(0.6rem, min(1vw, 2vh), 1.9rem);
+  --rhythm-md: clamp(0.75rem, min(1.3vw, 2.5vh), 2.3rem);
+  --rhythm-lg: clamp(0.9rem, min(1.7vw, 3vh), 2.7rem);
+
+  --radius-pill: 999px;
+  --radius-panel: 14px;
+
+  /* Motion. One easing for entrances, one for exits, nothing else. */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
+  --dur-fast: 260ms;
+  --dur-base: 620ms;
+  --dur-slow: 1100ms;
+
+  --z-scene: 0;
+  --z-scrim: 1;
+  --z-ui: 2;
+  --z-form: 3;
+}
+
+/*
+ * Scene palette.
+ *
+ * Aliases, not new colours — every accent maps onto the brand ramp above so the
+ * 3D scene and the UI cannot drift apart. These names mirror PALETTE in
+ * src/lib/config.ts one for one; changing either without the other is a bug.
+ *
+ * Two of them are genuinely new. --lime-core is the near-white the densest
+ * particle regions clamp toward under additive blending, and it exists because
+ * the brand ramp stops at green.400. --moss and --rim are the deep greens the
+ * terrain is read from; the brand's dark ramp is blue-black, which reads as a
+ * surface rather than as land once a green rim light is on it.
+ */
+:root {
+  --void: var(--ink-900);
+  --ink: var(--ink-800);
+  --soil: var(--ink-700);
+
+  --moss: #1d3a0a;
+  --rim: #41750f;
+
+  --lime: var(--green-500);
+  --lime-bright: var(--green-400);
+  --lime-deep: var(--green-600);
+  --lime-core: #d9ff9c;
+
+  --hairline: var(--border-subtle);
+
+  /*
+   * The scrim. A DOM overlay above the canvas and below the UI — not a
+   * post-process, because it must not be bloomed, must not enter the trail
+   * buffer, and must survive a WebGL failure.
+   *
+   * Present from the first frame even though no text sits on it until the
+   * reveal: faded in with the UI, the left third of the frame visibly darkens
+   * and the viewer sees a rectangle appear.
+   */
+  --scrim-opacity: 0.86;
+  --scrim-extent: 52%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast: 1ms;
+    --dur-base: 1ms;
+    --dur-slow: 1ms;
+  }
+}

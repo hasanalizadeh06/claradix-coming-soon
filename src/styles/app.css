@@ -1,0 +1,996 @@
+@import "./tokens.css";
+
+/* --------------------------------------------------------------------------
+ * Reset — only what this page actually needs.
+ * ----------------------------------------------------------------------- */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  background-color: var(--ink-900);
+}
+
+body {
+  font-family: "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: var(--step-0);
+  line-height: 1.6;
+  color: var(--text-secondary);
+  background-color: var(--ink-900);
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* The scene is decorative; text selection over it is only ever accidental. */
+canvas {
+  user-select: none;
+  touch-action: none;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input {
+  font: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--green-500);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+/* Visible only to assistive technology. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* --------------------------------------------------------------------------
+ * Page frame
+ * ----------------------------------------------------------------------- */
+
+.page {
+  position: relative;
+  /*
+   * This z-index is load-bearing, not decoration.
+   *
+   * `isolation: isolate` makes .page a stacking context at z-index auto, which
+   * paints in step 8 of the stacking algorithm. The scrim sits at z-index 1 and
+   * paints in step 9 — above the entire page, however high a z-index the
+   * children carry, because those children can never escape their parent's
+   * stacking context. The result is a black gradient laid over the headline.
+   * Giving .page itself a level above the scrim is the fix.
+   */
+  z-index: var(--z-ui);
+  display: grid;
+  /* minmax(0, 1fr) rather than 1fr: a bare 1fr track refuses to shrink
+     below its content, which is what pushed the footer out of view. */
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  /* Exactly one viewport, never more. dvh so the iOS toolbar collapsing
+     does not crop the footer; the vh line above it is the fallback for
+     engines without dvh, where an invalid height left the frame unsized. */
+  height: 100vh;
+  height: 100dvh;
+  width: 100%;
+  padding: var(--gutter-block) var(--gutter);
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.scene {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-scene);
+  background-color: var(--ink-900);
+}
+
+/*
+ * Contrast scrim. The headline has to clear 4.5:1 against whatever the scene
+ * happens to be doing behind it at that moment, and the scene is generative —
+ * so the guarantee has to come from the gradient, not from luck.
+ */
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-scrim);
+  pointer-events: none;
+  /* Narrowed for the re-solved composition. The old stack was sized against a
+     bridge that lived right of centre; the main tower now stands at x≈0.36 and
+     the deck arrives low on the left, and the previous reach dimmed both to
+     near-invisibility — the frame's own subject, behind a wall built for a
+     different frame. The headline also no longer needs that wall: it sits over
+     near-black sky. The scrim's job shrinks to the text column itself and a
+     soft grounding at the very foot of the page. */
+  background:
+    /* Elliptical pool hugging the text column — ends before the tower. */
+    radial-gradient(
+      66% 58% at 4% 46%,
+      rgba(4, 6, 16, 0.92) 0%,
+      rgba(4, 6, 16, 0.78) 32%,
+      rgba(4, 6, 16, 0.34) 58%,
+      rgba(4, 6, 16, 0) 78%
+    ),
+    linear-gradient(
+      98deg,
+      rgba(4, 6, 16, 0.8) 0%,
+      rgba(4, 6, 16, 0.42) 22%,
+      rgba(4, 6, 16, 0.08) 44%,
+      rgba(4, 6, 16, 0) 62%
+    ),
+    /* Foot of the page only — must release the arriving deck above it. */
+    linear-gradient(to top, rgba(4, 6, 16, 0.55) 0%, rgba(4, 6, 16, 0) 22%),
+    linear-gradient(to bottom, rgba(4, 6, 16, 0.7) 0%, rgba(4, 6, 16, 0) 22%),
+    /* Small pool under the keyword rail. */
+    radial-gradient(
+      42% 30% at 88% 2%,
+      rgba(4, 6, 16, 0.78) 0%,
+      rgba(4, 6, 16, 0) 72%
+    );
+}
+
+@media (max-width: 900px) {
+  .scrim {
+    background:
+      linear-gradient(
+        to top,
+        rgba(4, 6, 16, 0.96) 0%,
+        rgba(4, 6, 16, 0.88) 38%,
+        rgba(4, 6, 16, 0.45) 66%,
+        rgba(4, 6, 16, 0.15) 100%
+      );
+  }
+}
+
+.page > * {
+  position: relative;
+  z-index: var(--z-ui);
+}
+
+/* --------------------------------------------------------------------------
+ * Entrance choreography
+ *
+ * Content is in the HTML from the first byte, so these animate opacity only
+ * from an already-laid-out position. Nothing moves the layout, nothing is
+ * hidden behind a loading gate.
+ * ----------------------------------------------------------------------- */
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 14px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes drawLine {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+.enter {
+  animation: rise var(--dur-base) var(--ease-out) forwards;
+  animation-delay: calc(var(--enter-delay, 0) * 1ms);
+}
+
+/**
+ * Waiting for the bridge to finish.
+ *
+ * The default state is NOT hidden. `.enter` alone animates from opacity 0 and
+ * ends at 1, so anything that never receives this class — a prerendered page
+ * before hydration, a visitor with JavaScript off, a browser that fails to run
+ * the animation at all — settles at its natural opacity and is readable.
+ * Hidden is a state the page may only enter once it is certain it can leave it.
+ *
+ * `visibility` as well as `opacity`, because an opacity-0 element still takes
+ * focus from the keyboard and is still announced. A form field nobody can see
+ * but Tab can reach is worse than one that is merely invisible.
+ */
+.js .enter--waiting {
+  opacity: 0;
+  visibility: hidden;
+  animation: none;
+}
+
+/**
+ * A page whose reveal already happened, remounting. The entrance plays once
+ * per page life — settled elements are simply there, no animation to replay.
+ */
+.enter--settled {
+  animation: none;
+  opacity: 1;
+  visibility: visible;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .enter,
+  .enter--waiting {
+    opacity: 1;
+    visibility: visible;
+    animation: none;
+  }
+}
+
+/* --------------------------------------------------------------------------
+ * Header
+ * ----------------------------------------------------------------------- */
+
+.masthead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+}
+
+.logo {
+  display: inline-flex;
+  align-items: center;
+}
+
+.logo img {
+  display: block;
+  width: clamp(84px, min(8vw, 12vh), 132px);
+  height: auto;
+}
+
+.tagline-rail {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  font-size: var(--step--2);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* The morphing span sits inside a flex row, so it has to keep the row going
+ * rather than collapsing its children into one inline box. */
+.tagline-rail .dot {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--green-500);
+  opacity: 0.8;
+}
+
+@media (max-width: 720px) {
+  .tagline-rail {
+    display: none;
+  }
+}
+
+/* --------------------------------------------------------------------------
+ * Main column
+ * ----------------------------------------------------------------------- */
+
+.main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: clamp(1.25rem, 3vw, 3rem);
+  padding-block: var(--rhythm-sm);
+  min-height: 0;
+}
+
+.content {
+  max-width: 40rem;
+  min-height: 0;
+}
+
+/*
+ * "COMING SOON" — one clean line, no ornaments (client, 2026-08-01: no pip,
+ * no rule). The type itself is the treatment: wide-tracked caps in a
+ * lime-to-teal gradient with a soft breathing glow.
+ */
+.eyebrow {
+  margin: 0 0 var(--rhythm-sm);
+  font-size: var(--step--1);
+  font-weight: 700;
+  letter-spacing: 0.44em;
+  text-transform: uppercase;
+  background: linear-gradient(92deg, var(--green-500) 0%, #a6fd3f 45%, #2fd8a8 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  /*
+   * LONGHAND on purpose: the shorthand would replace `.enter`'s entrance
+   * animation entirely — the eyebrow then pops with no rise and reveal-check
+   * reads its delay as 0. Two animations, each with its own timing: the
+   * entrance (choreographed delay from --enter-delay) and the breathe.
+   */
+  animation-name: rise, eyebrowBreathe;
+  animation-duration: var(--dur-base), 5.2s;
+  animation-timing-function: var(--ease-out), ease-in-out;
+  animation-delay: calc(var(--enter-delay, 0) * 1ms), 1.8s;
+  animation-iteration-count: 1, infinite;
+  animation-fill-mode: forwards, none;
+}
+
+@keyframes eyebrowBreathe {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 10px rgba(124, 252, 0, 0.18));
+  }
+  50% {
+    filter: drop-shadow(0 0 22px rgba(124, 252, 0, 0.42));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .eyebrow {
+    animation: none;
+  }
+}
+
+/* --------------------------------------------------------------------------
+ * Kinetic headline
+ * ----------------------------------------------------------------------- */
+
+.headline {
+  margin: 0 0 var(--rhythm-md);
+  font-size: var(--step-headline);
+  font-weight: 600;
+  /* Fixed line-height in em: the box never changes size when the font swaps in
+   * or when the language morphs, which is where headline CLS normally comes
+   * from. */
+  line-height: 1.02em;
+  letter-spacing: var(--tracking-headline);
+  color: var(--text-primary);
+  text-wrap: balance;
+  /* Last line of defence for contrast. The scene is generative, so there is no
+   * single frame to check the headline against — this guarantees separation in
+   * every frame, including the ones nobody previewed. */
+  text-shadow: 0 1px 34px rgba(4, 6, 16, 0.95), 0 0 8px rgba(4, 6, 16, 0.6);
+}
+
+.headline-line {
+  display: block;
+  /* Reserve exactly one line box so the two-line block cannot collapse while
+   * characters are mid-flight. */
+  min-height: 1.02em;
+}
+
+.headline-line--accent {
+  color: var(--green-500);
+}
+
+/* Keeps a word atomic. Per-character inline-blocks otherwise give the browser
+ * permission to break a line anywhere, and it will. */
+.headline-word {
+  display: inline-block;
+  white-space: nowrap;
+}
+
+.headline-char {
+  display: inline-block;
+  will-change: transform, opacity, filter;
+  opacity: 0;
+  animation: charIn 620ms var(--ease-out) forwards;
+  /* The stagger step is computed per headline so the sweep takes the same time
+   * regardless of how many characters the sentence has. */
+  animation-delay: calc(
+    var(--char-base-delay, 0ms) + var(--char-index) * var(--char-stagger, 20ms)
+  );
+}
+
+@keyframes charIn {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 0.3em, 0);
+    filter: blur(5px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .headline-char {
+    opacity: 1;
+    animation: none;
+  }
+  .headline[data-phase="out"] .headline-char {
+    transform: none;
+    filter: none;
+  }
+}
+
+.lead {
+  margin: 0 0 var(--rhythm-lg);
+  max-width: 32rem;
+  font-size: var(--step-1);
+  font-weight: 350;
+  /* Looser than the headline and tighter than body copy: at this size the
+     line is a statement, not a paragraph. */
+  line-height: 1.5;
+  letter-spacing: -0.004em;
+  color: var(--text-secondary);
+  text-shadow: 0 1px 22px rgba(4, 6, 16, 0.9);
+}
+
+.lead .accent {
+  color: var(--green-500);
+  font-weight: 500;
+}
+
+/* --------------------------------------------------------------------------
+ * Subscribe
+ * ----------------------------------------------------------------------- */
+
+.subscribe {
+  margin: 0 0 var(--rhythm-lg);
+  max-width: 30rem;
+}
+
+.subscribe-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.4rem 0.4rem 1.25rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  /*
+   * Solid, not translucent, and no backdrop-filter. Two reasons.
+   *
+   * Autofill: the browser paints its own background inside the input and the
+   * only way to cover it is an opaque inset shadow. That shadow has to match
+   * the field exactly, which is impossible against a translucent surface whose
+   * colour depends on whatever the scene is doing behind it that frame.
+   *
+   * Cost: backdrop-filter over an animating WebGL canvas forces the compositor
+   * to re-read and re-blur that region every single frame. The scrim already
+   * takes this area to near-black, so the glass was costing real GPU time for
+   * a difference nobody could see.
+   */
+  background: var(--field-bg);
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out);
+}
+
+.subscribe-row:focus-within {
+  border-color: var(--border-accent);
+  box-shadow: 0 0 0 1px rgba(124, 252, 0, 0.2), 0 0 32px rgba(124, 252, 0, 0.12);
+}
+
+.subscribe-row[data-state="invalid"] {
+  border-color: rgba(238, 3, 3, 0.55);
+}
+
+.subscribe-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0.7rem 0;
+  border: 0;
+  background: transparent;
+  font-size: var(--step-0);
+  font-weight: 300;
+  letter-spacing: 0.01em;
+}
+
+.subscribe-input::placeholder {
+  color: var(--text-faint);
+}
+
+.subscribe-input:focus {
+  outline: none;
+}
+
+/*
+ * Autofill.
+ *
+ * Chrome paints its own background over an autofilled field with a UA rule that
+ * `background-color` cannot beat, and forces the text to near-black. On a dark
+ * field that is a grey slab with invisible text in it.
+ *
+ * The usual fix is an inset box-shadow the height of the field, painted in the
+ * page background colour. That does not work here: the field is transparent
+ * inside a translucent, backdrop-blurred pill, so an opaque rectangle would sit
+ * visibly inside the rounded shape with square corners showing at both ends.
+ *
+ * Instead, stall the transition. The browser *animates* to its autofill colour,
+ * so a transition long enough never arrives, and the field keeps exactly the
+ * background it was designed with — including the blur behind it.
+ *
+ * `-webkit-text-fill-color` is the one property that outranks the UA text
+ * colour, and `caret-color` has to be set with it or the cursor stays dark.
+ *
+ * The two selectors are separate rules on purpose: a browser that does not
+ * recognise one of the pseudo-classes discards the entire selector list, so
+ * grouping them would lose the fix in whichever engine is missing one.
+ */
+.subscribe-input:-webkit-autofill,
+.subscribe-input:-webkit-autofill:hover,
+.subscribe-input:-webkit-autofill:focus,
+.subscribe-input:-webkit-autofill:active {
+  /* An opaque inset shadow the height of the field, in the field's own colour.
+     box-shadow paints above background-color, so this covers the UA fill
+     completely — and because the surface behind it is a flat known colour, the
+     patch is invisible rather than approximately right. */
+  box-shadow: inset 0 0 0 100px var(--field-bg);
+  -webkit-text-fill-color: var(--text-primary);
+  caret-color: var(--text-primary);
+  /* Belt and braces: also stall the animation the browser uses to reach its
+     autofill colour, for engines where the shadow alone is not enough. */
+  transition: background-color 100000s ease-in-out 0s;
+  /* Firefox tints its autofill preview with a filter rather than a colour. */
+  filter: none;
+}
+
+.subscribe-input:autofill {
+  box-shadow: inset 0 0 0 100px var(--field-bg);
+  -webkit-text-fill-color: var(--text-primary);
+  caret-color: var(--text-primary);
+  transition: background-color 100000s ease-in-out 0s;
+  filter: none;
+}
+
+.subscribe-submit {
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--green-500);
+  color: var(--ink-900);
+  cursor: pointer;
+  transition:
+    transform var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out);
+}
+
+.subscribe-submit:hover:not(:disabled) {
+  transform: scale(1.08);
+  box-shadow: 0 0 26px rgba(124, 252, 0, 0.45);
+}
+
+.subscribe-submit:disabled {
+  cursor: default;
+  background: var(--surface);
+  color: var(--text-muted);
+}
+
+.subscribe-submit svg {
+  width: 18px;
+  height: 18px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.subscribe-submit[data-busy="true"] svg {
+  animation: spin 900ms linear infinite;
+}
+
+.subscribe-message {
+  display: block;
+  min-height: 1.2em;
+  margin-top: clamp(0.35rem, 0.9vh, 0.7rem);
+  padding-left: 1.25rem;
+  font-size: var(--step--1);
+  color: var(--text-muted);
+}
+
+.subscribe-message[data-tone="success"] {
+  color: var(--green-500);
+}
+
+.subscribe-message[data-tone="error"] {
+  color: #ff6b6b;
+}
+
+/* The honeypot must be reachable by a bot and invisible to a person, without
+ * display:none — many bots skip fields that are display:none. */
+.honeypot {
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* --------------------------------------------------------------------------
+ * Socials
+ * ----------------------------------------------------------------------- */
+
+.socials {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.socials-label {
+  margin-right: 0.4rem;
+  font-size: var(--step--1);
+  color: var(--text-muted);
+}
+
+.social-link {
+  display: inline-grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 50%;
+  color: var(--text-secondary);
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
+}
+
+.social-link:hover {
+  color: var(--green-500);
+  border-color: var(--border-accent);
+  transform: translateY(-3px);
+}
+
+.social-link svg {
+  width: 17px;
+  height: 17px;
+}
+
+/* --------------------------------------------------------------------------
+ * Countdown / build status
+ * ----------------------------------------------------------------------- */
+
+.aside {
+  display: grid;
+  place-items: center;
+}
+
+.countdown {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: auto auto auto;
+  gap: clamp(0.4rem, min(0.9vw, 1.6vh), 1.3rem) clamp(0.9rem, min(1.6vw, 3vh), 2.6rem);
+  inline-size: clamp(160px, min(20vw, 36vh), 284px);
+  padding: clamp(0.9rem, min(1.8vw, 3vh), 2.6rem);
+  border: 1px solid rgba(124, 252, 0, 0.22);
+  border-radius: 50%;
+  aspect-ratio: 1;
+  place-items: center;
+  align-content: center;
+  position: relative;
+  /* The dial sits over the brightest part of every scene, so it carries its own
+   * ground rather than relying on the page scrim, which is aimed at the type.
+   * The hairline cross between the four readouts is what turns a circle of
+   * numbers into an INSTRUMENT — layered here so it needs no extra markup. */
+  background:
+    linear-gradient(
+        to right,
+        transparent calc(50% - 0.5px),
+        rgba(124, 252, 0, 0.14) 50%,
+        transparent calc(50% + 0.5px)
+      )
+      center / 100% 54% no-repeat,
+    linear-gradient(
+        to bottom,
+        transparent calc(50% - 0.5px),
+        rgba(124, 252, 0, 0.14) 50%,
+        transparent calc(50% + 0.5px)
+      )
+      center / 58% 100% no-repeat,
+    radial-gradient(
+      circle at center,
+      rgba(4, 6, 16, 0.85) 0%,
+      rgba(4, 6, 16, 0.62) 62%,
+      rgba(4, 6, 16, 0.18) 100%
+    );
+  box-shadow:
+    0 0 44px rgba(124, 252, 0, 0.1),
+    inset 0 0 34px rgba(124, 252, 0, 0.06);
+}
+
+/* A fine instrument-tick ring just inside the rim — sixty quiet marks. */
+.countdown::after,
+.build-status::after {
+  content: "";
+  position: absolute;
+  inset: 5.5%;
+  border-radius: 50%;
+  background: repeating-conic-gradient(
+    from 0deg,
+    transparent 0deg 4.6deg,
+    rgba(124, 252, 0, 0.32) 4.6deg 6deg
+  );
+  mask: radial-gradient(
+    farthest-side,
+    transparent calc(100% - 3px),
+    #000 calc(100% - 3px)
+  );
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/*
+ * A green arc sweeping the ring. Built from a rotating conic gradient masked to
+ * a one-pixel band rather than a dot travelling an `offset-path`, because
+ * offset-path with a coord-box value is still patchy across browsers and this
+ * renders identically everywhere.
+ *
+ * It is the only ornament on the page; it earns its place by making the circle
+ * read as an instrument rather than as a border.
+ */
+.countdown::before,
+.build-status::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg,
+    transparent 246deg,
+    rgba(124, 252, 0, 0.16) 300deg,
+    var(--green-500) 348deg,
+    #d9ff9c 353deg,
+    transparent 360deg
+  );
+  mask: radial-gradient(
+    farthest-side,
+    transparent calc(100% - 2.5px),
+    #000 calc(100% - 2.5px)
+  );
+  filter: drop-shadow(0 0 6px rgba(124, 252, 0, 0.55));
+  animation: sweepRing 9s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes sweepRing {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .countdown::before,
+  .build-status::before {
+    animation: none;
+  }
+}
+
+.countdown-cell {
+  text-align: center;
+  min-width: 3.6ch;
+}
+
+.countdown-value {
+  display: block;
+  font-size: var(--step-2);
+  font-weight: 600;
+  line-height: 1;
+  /* Tabular figures stop the layout twitching every second. */
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+  text-shadow: 0 0 18px rgba(124, 252, 0, 0.28);
+}
+
+.countdown-cell:first-child .countdown-value {
+  color: var(--green-500);
+  text-shadow: 0 0 22px rgba(124, 252, 0, 0.5);
+}
+
+.countdown-label {
+  display: block;
+  margin-top: 0.4rem;
+  font-size: var(--step--2);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* The launch date itself, riding the bottom of the dial. */
+.countdown-date {
+  grid-column: 1 / -1;
+  margin-top: 0.15rem;
+  font-size: var(--step--2);
+  font-weight: 600;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  background: linear-gradient(90deg, var(--green-500), #2fd8a8);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Shown when no launch date is configured — honest, and needs no upkeep. */
+.build-status {
+  display: grid;
+  gap: clamp(0.5rem, 1.4vh, 1rem);
+  place-items: center;
+  inline-size: clamp(148px, min(19vw, 34vh), 268px);
+  padding: clamp(0.9rem, min(1.8vw, 3vh), 2.6rem);
+  aspect-ratio: 1;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 50%;
+  text-align: center;
+  position: relative;
+  background: radial-gradient(
+    circle at center,
+    rgba(4, 6, 16, 0.82) 0%,
+    rgba(4, 6, 16, 0.6) 62%,
+    rgba(4, 6, 16, 0.18) 100%
+  );
+}
+
+.build-status-label {
+  font-size: var(--step--2);
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.build-status-bar {
+  width: clamp(90px, 12vw, 150px);
+  height: 2px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+
+.build-status-bar span {
+  display: block;
+  height: 100%;
+  width: 40%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, var(--green-500), transparent);
+  animation: sweep 2.8s var(--ease-out) infinite;
+}
+
+@keyframes sweep {
+  from {
+    transform: translateX(-110%);
+  }
+  to {
+    transform: translateX(260%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .build-status-bar span {
+    animation: none;
+    width: 100%;
+    background: var(--green-600);
+  }
+}
+
+/*
+ * MOBILE (client, 2026-08-01: "it spills off my screen"). The desktop page is
+ * a sealed one-viewport frame; on a phone the same seal CLIPPED whatever the
+ * (smaller, browser-chrome-eaten) viewport could not hold, with no way to
+ * scroll to it. Below 1080px the seal opens: the page takes its natural
+ * height, scrolls when it must, and the countdown dial — previously hidden
+ * here entirely — returns as a compact instrument under the content.
+ */
+@media (max-width: 1080px) {
+  body {
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+  .page {
+    height: auto;
+    min-height: 100vh;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+  .main {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: end;
+    gap: var(--rhythm-lg);
+  }
+  .aside {
+    justify-self: center;
+    padding-block: var(--rhythm-sm) var(--rhythm-md);
+  }
+}
+
+/* --------------------------------------------------------------------------
+ * Footer
+ * ----------------------------------------------------------------------- */
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding-top: clamp(0.6rem, 1.6vh, 1.25rem);
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  font-size: var(--step--2);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.footer-keywords {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.footer-keywords .dot {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--green-500);
+  opacity: 0.7;
+}
+
+.footer-legal {
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .footer {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+  .socials-label {
+    display: none;
+  }
+}
+
+/* --------------------------------------------------------------------------
+ * No-JS / no-WebGL fallback
+ *
+ * The page is fully readable without any of the above. This just stops the
+ * background from being flat black.
+ * ----------------------------------------------------------------------- */
+
+.scene[data-fallback="true"] {
+  background:
+    radial-gradient(
+      120% 90% at 78% 82%,
+      rgba(124, 252, 0, 0.22) 0%,
+      rgba(124, 252, 0, 0.06) 34%,
+      transparent 62%
+    ),
+    radial-gradient(
+      70% 60% at 60% 40%,
+      rgba(70, 181, 0, 0.12) 0%,
+      transparent 70%
+    ),
+    var(--ink-900);
+}

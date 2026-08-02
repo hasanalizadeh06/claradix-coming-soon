@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+
+    <!--
+      The UI waits for the bridge to finish building before it appears, and the
+      prerendered HTML therefore ships with every element marked as waiting.
+      That is only safe if something is guaranteed to un-mark it — so the rule
+      that actually hides them is gated on this class, and without JavaScript
+      the page renders fully readable exactly as the server sent it.
+
+      Inline and in <head> on purpose: a deferred script would let one frame of
+      visible content paint before it is hidden, which is a worse artefact than
+      the one this prevents.
+    -->
+    <script>
+      document.documentElement.classList.add("js");
+    </script>
+
+    <title><!--app-title--></title>
+    <meta name="description" content="<!--app-description-->" />
+    <link rel="canonical" href="https://claradix.com/" />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
+    <meta name="theme-color" content="#040610" />
+    <meta name="color-scheme" content="dark" />
+
+    <!-- Icons -->
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" href="/favicon-96x96.png" sizes="96x96" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+
+    <!--
+      Self-hosted and preloaded. One subset, one file: the page is English
+      only, so nothing outside basic Latin is ever needed.
+    -->
+    <link
+      rel="preload"
+      as="font"
+      type="font/woff2"
+      href="/fonts/figtree.woff2"
+      crossorigin
+    />
+
+    <!-- Social -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Claradix" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:url" content="https://claradix.com/" />
+    <meta property="og:title" content="<!--app-title-->" />
+    <meta property="og:description" content="<!--app-description-->" />
+    <meta property="og:image" content="https://claradix.com/img/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Claradix — something new is taking shape" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="<!--app-title-->" />
+    <meta name="twitter:description" content="<!--app-description-->" />
+    <meta name="twitter:image" content="https://claradix.com/img/og.png" />
+
+    <!--
+      Structured data. This is what an AI assistant reads when someone asks it
+      "who are Claradix" — plain facts, machine-addressable, no JavaScript
+      required to reach them.
+    -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Organization",
+            "@id": "https://claradix.com/#organization",
+            "name": "Claradix",
+            "legalName": "Claradix LLC",
+            "url": "https://claradix.com",
+            "logo": "https://claradix.com/img/claradix-logo.png",
+            "image": "https://claradix.com/img/og.png",
+            "email": "info@claradix.com",
+            "telephone": "+994504431929",
+            "description": "Claradix is a digital agency in Baku, Azerbaijan, building web platforms, brand identity, software and digital marketing for companies that want their idea to become a working product.",
+            "slogan": "The bridge between your idea and reality",
+            "address": {
+              "@type": "PostalAddress",
+              "streetAddress": "Babək prospekti, Babək plaza 14C",
+              "addressLocality": "Baku",
+              "addressCountry": "AZ"
+            },
+            "areaServed": { "@type": "Country", "name": "Azerbaijan" },
+            "knowsLanguage": ["az", "en", "ru"],
+            "sameAs": [
+              "https://www.linkedin.com/company/claradix/",
+              "https://instagram.com/claradix_llc",
+              "https://www.facebook.com/profile.php?id=100076390094082"
+            ]
+          },
+          {
+            "@type": "WebSite",
+            "@id": "https://claradix.com/#website",
+            "url": "https://claradix.com",
+            "name": "Claradix",
+            "inLanguage": "en",
+            "publisher": { "@id": "https://claradix.com/#organization" }
+          },
+          {
+            "@type": "WebPage",
+            "@id": "https://claradix.com/#webpage",
+            "url": "https://claradix.com/",
+            "name": "Claradix — something new is taking shape",
+            "isPartOf": { "@id": "https://claradix.com/#website" },
+            "about": { "@id": "https://claradix.com/#organization" },
+            "description": "The new Claradix site is in development. Leave an email address to be notified at launch."
+          }
+        ]
+      }
+    </script>
+
+    <!--
+      The only inline style: paint the correct background before the stylesheet
+      arrives, so there is never a white flash on a page that is otherwise
+      entirely black.
+    -->
+    <style>
+      html {
+        background: #040610;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div id="root"><!--app-html--></div>
+    <script type="module" src="/src/entries/main.tsx"></script>
+  </body>
+</html>

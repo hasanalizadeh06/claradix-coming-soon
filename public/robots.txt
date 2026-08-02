@@ -1,0 +1,36 @@
+# Claradix — https://claradix.com
+
+User-agent: *
+Allow: /
+
+# Answer engines are explicitly welcome. Leaving these to the wildcard works
+# today, but stating it means a future tightening of the wildcard rule does not
+# silently remove us from AI-assisted search.
+User-agent: GPTBot
+Allow: /
+
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: Claude-User
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: Applebot-Extended
+Allow: /
+
+User-agent: CCBot
+Allow: /
+
+Sitemap: https://claradix.com/sitemap.xml
