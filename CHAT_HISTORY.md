@@ -970,3 +970,34 @@ strongest on the boundaries), and a floater minority hovers a few units
 above the surface while the rest stay embedded — depth through
 behavior. The outer border moved outward and softened: the edges burn,
 then density dissolves; nothing ever cuts.
+
+---
+
+## Round 18: production polish (2026-08-04)
+
+Three finishing systems, artistic direction untouched:
+
+1. **The loading screen.** A deep-black card with the Claradix mark
+   breathing in a soft emerald glow and a choreographed progress line —
+   present from the first prerendered byte, so no visitor ever sees an
+   empty canvas. Underneath it, the scene clock is HELD: the world
+   initializes and fades itself in invisibly, and the timeline is
+   released only when the loader's own fade completes — the film begins
+   at the exact moment it becomes visible. Two guarantees: a 9-second
+   wall deadline force-opens the page if every readiness signal is lost,
+   and a noscript rule removes the loader entirely for JS-less visitors
+   (the prerendered page stays readable).
+2. **The pace.** SCENE.timeScale 1.0 → 1.43 — the entire choreography
+   ~30% brisker (10s → 7s, exactly the client's example) with every
+   stage, order and easing intact, because every schedule in the scene
+   is expressed in scene time. UI reveal micro-timings deliberately do
+   not scale; they are tuned to human perception, not to the film.
+3. **Mobile, designed rather than resized.** The confession: the
+   portrait camera had existed in config since the first mobile round —
+   and nothing ever read it. Phones were getting the landscape framing
+   with both flanks cut off. It is now wired through an
+   applyCameraMode(width, height) that runs at init and on every resize
+   (rotation swaps compositions live), and the portrait framing was
+   re-solved for the extended bridge: the full sweep — road entry, both
+   towers, dissolving exit — sits in the clear band between the stacked
+   mobile UI. Loader styles and small-screen CSS polish landed with it.

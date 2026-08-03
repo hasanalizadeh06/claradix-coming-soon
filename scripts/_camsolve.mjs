@@ -27,13 +27,13 @@ const CANDIDATES = [
   ["current", [140, 62, 980], [440, 52, -240], 35],
 ];
 
-// Allow overrides from CLI: node _camsolve.mjs px py pz tx ty tz fov
+// Allow overrides from CLI: node _camsolve.mjs px py pz tx ty tz fov [aspect]
 if (process.argv.length >= 9) {
   const a = process.argv.slice(2).map(Number);
   CANDIDATES.push(["cli", [a[0], a[1], a[2]], [a[3], a[4], a[5]], a[6]]);
 }
 
-const ASPECT = 1536 / 1024;
+const ASPECT = process.argv[9] ? Number(process.argv[9]) : 1536 / 1024;
 
 function buildCurve() {
   const pts = CENTRELINE.map((p) => new THREE.Vector3(...p));

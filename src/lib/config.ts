@@ -105,8 +105,11 @@ export const SCENE = {
    */
   loop: false,
 
-  /** Global multiplier on every duration in TIMELINE. Practical floor 0.55. */
-  timeScale: 1.0,
+  /** Global multiplier on every duration in TIMELINE. Practical floor 0.55.
+   *  1.43 ≈ −30% wall time (client, 2026-08-04: "10s → ~7s") — the entire
+   *  choreography, order and easing intact, everything proportionally
+   *  brisker. UI_REVEAL micro-timings deliberately do NOT scale. */
+  timeScale: 1.43,
 
   /** Debug only. Must be 0 in production. */
   debugStartPhase: 0,
@@ -1661,11 +1664,16 @@ export const CAMERA = {
 
   /** Portrait re-composes rather than crops — a crop loses the sweep entirely. */
   portrait: {
-    /** Same low-and-behind language, opened wider — 9:16 keeps the road
-     *  ~60% of the bottom and the tower rising past the top third. */
-    fov: 58,
-    basePosition: [148, 66, 990] as const,
-    baseTarget: [400, 54, -240] as const,
+    /** RE-SOLVED for the extended centreline (2026-08-04 mobile pass,
+     *  _camsolve @ aspect 0.4521): the WHOLE bridge fits the 9:16 frame
+     *  in the CLEAR BAND between the stacked mobile UI blocks — main
+     *  tower at x 0.43 spanning y 0.43–0.59 (below the CTA), road entry
+     *  (0.25, 0.71) just above the countdown, far tower 0.71, exit
+     *  dissolving at the right edge. Repositioned, not scaled: the pitch
+     *  aims up so the bridge drops out from behind the headline. */
+    fov: 61,
+    basePosition: [138, 62, 1030] as const,
+    baseTarget: [430, 225, -240] as const,
   },
 
   orientationParallax: {

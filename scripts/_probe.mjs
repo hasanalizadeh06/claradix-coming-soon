@@ -11,7 +11,8 @@ const browser = await chromium.launch({
   channel: "chrome",
   args: ["--enable-unsafe-swiftshader", "--use-gl=angle", "--use-angle=swiftshader"],
 });
-const page = await browser.newPage({ viewport: { width: 1536, height: 1024 } });
+const [VW, VH] = (process.env.VIEWPORT ?? "1536x1024").split("x").map(Number);
+const page = await browser.newPage({ viewport: { width: VW, height: VH } });
 const problems = [];
 page.on("pageerror", (e) => problems.push("[pageerror] " + e.message));
 page.on("console", (m) => {

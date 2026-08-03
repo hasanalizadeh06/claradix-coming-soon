@@ -1106,3 +1106,153 @@ input {
     ),
     var(--ink-900);
 }
+
+/* --------------------------------------------------------------------------
+ * Loading screen (2026-08-04 production pass)
+ *
+ * Stands over everything until the scene has drawn its first frame, then
+ * fades over 750ms while the scene clock is released underneath. Deep
+ * black to match the world; the mark breathes in a soft emerald glow.
+ * ----------------------------------------------------------------------- */
+
+.loader {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.6rem;
+  background: #020409;
+  opacity: 1;
+  transition: opacity 750ms ease;
+}
+
+.loader--fading {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.loader-glow {
+  position: absolute;
+  width: min(52vmin, 420px);
+  height: min(52vmin, 420px);
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    rgba(124, 252, 0, 0.14) 0%,
+    rgba(124, 252, 0, 0.05) 42%,
+    transparent 70%
+  );
+  filter: blur(6px);
+  animation: loaderBreathe 3.6s ease-in-out infinite;
+}
+
+@keyframes loaderBreathe {
+  0%, 100% { transform: scale(1); opacity: 0.75; }
+  50% { transform: scale(1.12); opacity: 1; }
+}
+
+.loader-logo {
+  position: relative;
+  width: clamp(96px, 14vw, 148px);
+  height: auto;
+  filter: drop-shadow(0 0 22px rgba(124, 252, 0, 0.28));
+}
+
+.loader-track {
+  position: relative;
+  width: clamp(140px, 22vw, 220px);
+  height: 2px;
+  border-radius: 999px;
+  background: rgba(124, 252, 0, 0.14);
+  overflow: hidden;
+}
+
+.loader-bar {
+  position: absolute;
+  inset: 0;
+  transform-origin: left center;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #4aa30c, #7cfc00);
+  transition: transform 260ms ease-out;
+}
+
+.loader-pct {
+  font-size: var(--step--2);
+  letter-spacing: 0.28em;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+/* --------------------------------------------------------------------------
+ * Mobile polish (2026-08-04 production pass): designed, not resized.
+ * ----------------------------------------------------------------------- */
+
+@media (max-width: 720px) {
+  .page {
+    padding-inline: clamp(1rem, 5vw, 1.6rem);
+  }
+  .content {
+    max-inline-size: 100%;
+  }
+  .lead {
+    max-inline-size: 34ch;
+  }
+  .whatsapp-cta {
+    max-inline-size: 100%;
+  }
+  .aside {
+    justify-self: center;
+    inline-size: min(78vw, 300px);
+    padding-block: var(--rhythm-md);
+  }
+  .tagline-rail {
+    display: none;
+  }
+}
+
+@media (max-width: 420px) {
+  .masthead img {
+    width: 104px;
+    height: auto;
+  }
+  .footer-keywords {
+    gap: 0.5rem;
+    row-gap: 0.35rem;
+  }
+}
+
+/* --------------------------------------------------------------------------
+ * Mobile readability + dial size (client, 2026-08-04)
+ *
+ * Two fixes. The type gets a deeper ground on phones: its own soft dark
+ * pool plus heavier text shadows, because the portrait camera parks the
+ * luminous roadway directly behind the copy. And the countdown dial was
+ * collapsing to its 160px floor on narrow viewports (min(20vw, 36vh)
+ * bottoms out on phones), spilling the readouts past the ring - on
+ * mobile the dial now scales with the viewport instead.
+ * ----------------------------------------------------------------------- */
+
+@media (max-width: 1080px) {
+  .content {
+    position: relative;
+    isolation: isolate;
+  }
+  
+  .eyebrow,
+  .lead {
+    text-shadow:
+      0 2px 14px rgba(2, 5, 9, 0.95),
+      0 0 30px rgba(2, 5, 9, 0.8);
+  }
+  .headline {
+    text-shadow:
+      0 2px 20px rgba(2, 5, 9, 0.98),
+      0 0 44px rgba(2, 5, 9, 0.85);
+  }
+  .countdown {
+    inline-size: clamp(250px, 64vw, 330px);
+  }
+}

@@ -5,6 +5,7 @@ import type { PostFXOptions } from "@/gl/PostFX";
 import { PARTICLES, POSTFX } from "@/lib/config";
 import { isMeasurementAgent } from "@/lib/agent";
 import { sceneWillNotCome } from "@/lib/reveal";
+import { holdTimeline, sceneReady } from "@/lib/loading";
 
 /**
  * Loads and owns the WebGL scene.
@@ -118,6 +119,8 @@ export function SceneCanvas() {
     if (isMeasurementAgent()) {
       setFallback(true);
       sceneWillNotCome();
+      // No film is coming — the loader must come straight down.
+      sceneReady();
       return;
     }
 
@@ -130,11 +133,18 @@ export function SceneCanvas() {
       // wall-clock deadline — "the page is never hostage", violated by the
       // page's own safety net.
       sceneWillNotCome();
+      sceneReady();
       trackSceneFallback(
         capabilities.supportsWebGL ? "reduced-motion" : "no-webgl",
       );
       return;
     }
+
+    // The scene clock is HELD while the loading screen stands: the world
+    // will initialize and fade itself in invisibly behind the loader, and
+    // the choreography begins only when the loader's fade completes
+    // (LoadingScreen → releaseTimeline).
+    holdTimeline();
 
     let disposed = false;
     let stage: { dispose: () => void } | null = null;
@@ -155,12 +165,17 @@ export function SceneCanvas() {
           factory: createBridgeScene,
           post: { ...POST, bloom: POST.bloom && capabilities.bloom },
           cameraFov: CAMERA_FOV,
-          onFirstFrame: () =>
-            trackSceneReady(capabilities.tier, performance.now() - startedAt),
+          onFirstFrame: () => {
+            trackSceneReady(capabilities.tier, performance.now() - startedAt);
+            // The world exists on screen — the loader may come down.
+            sceneReady();
+          },
         });
       } catch (error) {
         setFallback(true);
         trackSceneFallback("load-error");
+        // The film failed to arrive; the loader must not wait for it.
+        sceneReady();
         if (import.meta.env.DEV) console.error(error);
       }
     });

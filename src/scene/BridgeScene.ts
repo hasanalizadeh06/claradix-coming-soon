@@ -248,15 +248,35 @@ export function createBridgeScene(ctx: SceneContext): SceneHandle {
   // on top produces two competing vectors that stop the assembly being legible.
   const home = new THREE.Vector3(...CAMERA.basePosition);
   const target = new THREE.Vector3(...CAMERA.baseTarget);
-  camera.fov = CAMERA.fov;
   camera.near = CAMERA.near;
   camera.far = CAMERA.far;
-  camera.position.copy(home);
-  camera.lookAt(target);
-  camera.updateProjectionMatrix();
 
   const camPos = home.clone();
   const camAim = target.clone();
+
+  /**
+   * Portrait RE-COMPOSES rather than crops (CAMERA.portrait existed in
+   * config since the mobile round but nothing ever read it — the phone was
+   * getting the landscape framing with both flanks amputated). Applied at
+   * init and on every resize, so rotating the device swaps compositions.
+   */
+  const applyCameraMode = (width: number, height: number) => {
+    const cfg = height > width ? CAMERA.portrait : CAMERA;
+    const [px, py, pz] = cfg.basePosition;
+    const [tx, ty, tz] = cfg.baseTarget;
+    home.set(px, py, pz);
+    target.set(tx, ty, tz);
+    camera.fov = cfg.fov;
+    camera.updateProjectionMatrix();
+    camPos.copy(home);
+    camAim.copy(target);
+    camera.position.copy(home);
+    camera.lookAt(target);
+  };
+  applyCameraMode(
+    typeof window !== "undefined" ? window.innerWidth : 1536,
+    typeof window !== "undefined" ? window.innerHeight : 1024,
+  );
 
   // --- interaction state --------------------------------------------------
   const cursorWorld = new THREE.Vector3(0, -9999, 0);
@@ -713,13 +733,13 @@ export function createBridgeScene(ctx: SceneContext): SceneHandle {
 
     resize(width: number, height: number) {
       sky.setSize(width, height);
+      applyCameraMode(width, height);
       // Point size is expressed in pixels, so it has to track viewport height or
       // the scene turns to soup on a phone and to dust on a 4K monitor.
       const scale = THREE.MathUtils.clamp(height / 900, 0.55, 1.5);
       particles.material.uniforms.uPointScale.value = scale;
       streams.setPointScale(scale);
       network.setPointScale(scale);
-      void width;
     },
 
     dispose() {

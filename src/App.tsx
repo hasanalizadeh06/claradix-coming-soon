@@ -7,6 +7,7 @@ import { Countdown } from "@/ui/Countdown";
 import { WhatsAppCta } from "@/ui/WhatsAppCta";
 import { Socials } from "@/ui/Socials";
 import { SceneCanvas } from "@/ui/SceneCanvas";
+import { LoadingScreen } from "@/ui/LoadingScreen";
 
 /**
  * The page shell.
@@ -52,6 +53,15 @@ export function App() {
 
   return (
     <>
+      {/* Stands over everything from the first prerendered byte; comes
+          down only when the scene has drawn its first frame. The noscript
+          rule keeps the JS-less page readable — a loader that nothing can
+          ever dismiss must not exist for a visitor without JS. */}
+      <noscript>
+        <style>{".loader{display:none}"}</style>
+      </noscript>
+      <LoadingScreen />
+
       <SceneCanvas />
       <div className="scrim" aria-hidden="true" />
 
