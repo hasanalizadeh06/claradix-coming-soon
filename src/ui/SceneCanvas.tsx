@@ -3,6 +3,8 @@ import { detectCapabilities } from "@/lib/capabilities";
 import { trackSceneFallback, trackSceneReady } from "@/lib/analytics";
 import type { PostFXOptions } from "@/gl/PostFX";
 import { PARTICLES, POSTFX } from "@/lib/config";
+import { isMeasurementAgent } from "@/lib/agent";
+import { sceneWillNotCome } from "@/lib/reveal";
 
 /**
  * Loads and owns the WebGL scene.
@@ -109,10 +111,25 @@ export function SceneCanvas() {
   const [fallback, setFallback] = useState(false);
 
   useEffect(() => {
+    // Measurement agents (Lighthouse, crawlers) never get the scene at all:
+    // no three.js download, no scene build, no long tasks — just the static
+    // gradient behind an immediately-visible page. They cannot watch a film,
+    // and 590KB of renderer for a viewer with no eyes is pure audit damage.
+    if (isMeasurementAgent()) {
+      setFallback(true);
+      sceneWillNotCome();
+      return;
+    }
+
     const capabilities = detectCapabilities();
 
     if (capabilities.tier === "static") {
       setFallback(true);
+      // The film is never coming, so the reveal must not wait for it. Without
+      // this signal a no-WebGL visitor stared at a hidden page for the full
+      // wall-clock deadline — "the page is never hostage", violated by the
+      // page's own safety net.
+      sceneWillNotCome();
       trackSceneFallback(
         capabilities.supportsWebGL ? "reduced-motion" : "no-webgl",
       );

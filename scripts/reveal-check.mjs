@@ -131,6 +131,45 @@ for (let i = 0; i < 300; i++) {
 check("page still arrives with no WebGL at all", survived, survived ? "revealed" : "BLANK");
 await bare.close();
 
+// --- 4b. a measurement agent gets the page IMMEDIATELY ---------------------
+//
+// Lighthouse / PageSpeed cannot watch a film: it loads, observes briefly, and
+// scores what painted. PSI was erroring with "the page did not paint any
+// content" because everything sat behind the reveal gate for its whole trace.
+// Agents (UA contains Chrome-Lighthouse) must get first-paint-visible text and
+// must never be sent the renderer at all.
+const lh = await browser.newPage({
+  viewport: { width: W, height: H },
+  userAgent:
+    "Mozilla/5.0 (Linux; Android 11; moto g power (2022)) AppleWebKit/537.36 " +
+    "(KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36 Chrome-Lighthouse",
+});
+const heavyRequests = [];
+lh.on("request", (r) => {
+  if (/three|BridgeScene|Stage/.test(r.url())) heavyRequests.push(r.url());
+});
+await lh.goto(`http://localhost:${PORT}/`, { waitUntil: "load", timeout: 60000 });
+
+// "Immediately" means by load + one frame — no scene clock, no deadline.
+await lh.waitForTimeout(300);
+const lhVisible = await lh.evaluate(() => {
+  const el = document.querySelector(".headline-line");
+  if (!el) return false;
+  const s = getComputedStyle(el);
+  return s.visibility !== "hidden" && parseFloat(s.opacity) > 0.01;
+});
+const lhJsClass = await lh.evaluate(() =>
+  document.documentElement.classList.contains("js"),
+);
+
+check("Lighthouse UA sees the headline at first paint", lhVisible,
+  lhVisible ? "visible immediately" : "HIDDEN — PSI will report no content");
+check("Lighthouse UA never gets the js gate", !lhJsClass,
+  lhJsClass ? "js class present — text was hidden pre-hydration" : "no gate");
+check("Lighthouse UA is never sent the renderer", heavyRequests.length === 0,
+  heavyRequests.length ? `fetched: ${heavyRequests[0]}` : "no three.js/scene chunks");
+await lh.close();
+
 // --- 5. the safety net under the safety net: no JavaScript at all ---------
 //
 // The prerendered HTML ships with every element marked as waiting, because the

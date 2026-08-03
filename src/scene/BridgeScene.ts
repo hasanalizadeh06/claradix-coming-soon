@@ -39,6 +39,7 @@ import {
   PARTICLES,
   PERF,
   POSTFX,
+  REWIND_START,
   RIVER,
   SCENE,
   TIMELINE,
@@ -58,6 +59,7 @@ const _tmp = new THREE.Vector3();
 const _ray = new THREE.Vector3();
 const _ndc = new THREE.Vector3();
 const _dolly = new THREE.Vector3();
+const _best = new THREE.Vector3();
 
 /**
  * Swarm-light intensity for the current scene time.
@@ -194,6 +196,7 @@ export function createBridgeScene(ctx: SceneContext): SceneHandle {
   scene.add(groundGlow.mesh);
 
   const streams = createGroundStreams(terrain, tier);
+  streams.setLoop(SCENE.loop);
   scene.add(streams.points);
 
   // --- the bridge, as a list of positions ---------------------------------
@@ -225,9 +228,6 @@ export function createBridgeScene(ctx: SceneContext): SceneHandle {
   const cursorWorld = new THREE.Vector3(0, -9999, 0);
   let cursorStrength = 0;
   const swarmPositions = Array.from({ length: 5 }, () => new THREE.Vector3());
-
-  let pulseFired = false;
-  let pulseStart = -1;
 
   /**
    * Mutable so the rewind can be exercised even though it ships off.
@@ -286,6 +286,7 @@ export function createBridgeScene(ctx: SceneContext): SceneHandle {
         loopEnabled = on;
         particles.material.uniforms.uLoop.value = on ? 1 : 0;
         groundGlow.setLoop(on);
+        streams.setLoop(on);
       },
     };
     (window as unknown as { __rim?: (v: number) => void }).__rim = (v) =>
@@ -459,16 +460,23 @@ export function createBridgeScene(ctx: SceneContext): SceneHandle {
 
       // --- the completion pulse -------------------------------------------
       //
-      // ONE band of brightness, travelling far → near in the same direction the
-      // build ran. Fires exactly once: a bridge that pulses rhythmically is a
-      // heartbeat, and a heartbeat is a much cheaper idea than this one.
-      if (!pulseFired && t >= TIMELINE.phase4_completionStart + COMPLETION_PULSE.startDelay) {
-        pulseFired = true;
-        pulseStart = t;
-      }
-      if (pulseStart >= 0) {
-        const k = (t - pulseStart) / COMPLETION_PULSE.duration;
-        particles.material.uniforms.uPulseU.value = k <= 1 ? 1 - k : -1;
+      // ONE band of brightness travelling far → near, the direction the build
+      // ran — RECURRING every ten seconds while the bridge stands complete
+      // (client, 2026-08-01). A pure function of the clock, no fired-flags:
+      // seeking lands on the exact frame, and in loop mode the pulse
+      // schedule wraps with everything else. The stillness gate keeps it out
+      // of Act IV, where a proud pulse on a dissolving bridge would be a lie.
+      {
+        const firstPulse =
+          TIMELINE.phase4_completionStart + COMPLETION_PULSE.startDelay;
+        let pulseU = -1;
+        if (t >= firstPulse && (!loopEnabled || t < REWIND_START)) {
+          const k =
+            ((t - firstPulse) % COMPLETION_PULSE.repeatEvery) /
+            COMPLETION_PULSE.duration;
+          pulseU = k <= 1 ? 1 - k : -1;
+        }
+        particles.material.uniforms.uPulseU.value = pulseU;
       }
 
       // --- the cursor, resolved into the world ----------------------------
@@ -489,8 +497,8 @@ export function createBridgeScene(ctx: SceneContext): SceneHandle {
       _ray.subVectors(_ndc, camera.position).normalize();
 
       let bestD = Infinity;
-      for (let i = 0; i <= 24; i++) {
-        _tmp.copy(camera.position).addScaledVector(_ray, 120 + i * 60);
+      for (let i = 0; i <= 40; i++) {
+        _tmp.copy(camera.position).addScaledVector(_ray, 120 + i * 40);
         const u = centreline.nearestU(_tmp);
         centreline.positionAt(u, _ndc);
 
@@ -515,8 +523,17 @@ export function createBridgeScene(ctx: SceneContext): SceneHandle {
         const d = _ndc.distanceTo(_tmp);
         if (d < bestD) {
           bestD = d;
-          cursorWorld.copy(_ndc);
+          _best.copy(_ndc);
         }
+      }
+
+      // SMOOTHED, never snapped. At mid-span the curtain is nearly parallel
+      // to the ray, so tiny pointer moves used to teleport the resolved point
+      // hundreds of units along the span — the field churned and the bridge
+      // looked like it was being mangled. An ~80ms time constant keeps the
+      // influence gliding along the structure instead.
+      if (bestD < Infinity) {
+        cursorWorld.lerp(_best, 1 - Math.exp(-frame.delta / 0.08));
       }
 
       // Proximity drives the reaction, and the reaction is HELD. No time term:

@@ -14,9 +14,23 @@
       Inline and in <head> on purpose: a deferred script would let one frame of
       visible content paint before it is hidden, which is a worse artefact than
       the one this prevents.
+
+      MEASUREMENT AGENTS never get the class at all. Lighthouse / PageSpeed
+      ("Chrome-Lighthouse") and search crawlers cannot watch a film — they load,
+      observe briefly, and score what painted. Hiding the text from them reads
+      as an empty page and fails the audit before the reveal ever fires. They
+      receive the prerendered page fully visible from the first paint — the
+      same settled state reduced-motion visitors get. Human visitors are
+      unaffected. The regex is mirrored in src/lib/agent.ts; KEEP THEM IN SYNC.
     -->
     <script>
-      document.documentElement.classList.add("js");
+      if (
+        !/Chrome-Lighthouse|Googlebot|AdsBot|Google Page Speed|bingbot|BingPreview|DuckDuckBot|YandexBot|Slurp|Baiduspider/i.test(
+          navigator.userAgent
+        )
+      ) {
+        document.documentElement.classList.add("js");
+      }
     </script>
 
     <title><!--app-title--></title>

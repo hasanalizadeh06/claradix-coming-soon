@@ -2,7 +2,7 @@ import { SITE, UI_REVEAL } from "@/lib/config";
 import { track } from "@/lib/analytics";
 import type { Copy } from "@/lib/copy";
 import { reveal, revealDelay } from "@/lib/reveal";
-import { Behance, Facebook, Instagram, LinkedIn } from "./icons";
+import { Facebook, Instagram, LinkedIn } from "./icons";
 
 /** From UI_REVEAL.sequence, not typed in again here. */
 const LINK_STAGGER_MS = Math.round(
@@ -13,7 +13,6 @@ const LINKS = [
   { key: "linkedin", href: SITE.social.linkedin, label: "LinkedIn", Icon: LinkedIn },
   { key: "instagram", href: SITE.social.instagram, label: "Instagram", Icon: Instagram },
   { key: "facebook", href: SITE.social.facebook, label: "Facebook", Icon: Facebook },
-  { key: "behance", href: SITE.social.behance, label: "Behance", Icon: Behance },
 ] as const;
 
 export function Socials({ copy, revealed }: { copy: Copy; revealed: boolean }) {

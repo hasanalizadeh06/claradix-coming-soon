@@ -155,11 +155,11 @@ const check = (name, ok, detail) => results.push({ name, ok, detail });
 
 // --- the shape of a cycle --------------------------------------------------
 //
-// REWIND_START is 20.0, departures run 9.0s, returns land by 34.55, one cycle
-// is 35.0s: Act III stillness 15.6–20, Act IV return 20–35.
-const settled = await shoot(18.0);
-const midRewind = await shoot(26.0);
-const emptied = await shoot(34.6);
+// REWIND_START is 18.7, the boom fires at 28.1, returns land by ~32.9, one
+// cycle is 33.7s: stillness 14.3–18.7, the black hole and burst 18.7–33.7.
+const settled = await shoot(16.5);
+const midRewind = await shoot(24.5);
+const emptied = await shoot(33.4);
 
 const sLit = lit(settled);
 const mLit = lit(midRewind);
@@ -207,16 +207,17 @@ check(
 // a moment apart — and the cycle comparison only has to come in under it. What
 // that isolates is the particle system, which is the thing actually claiming to
 // be exactly repeatable.
-for (const t of [0.6, 8.0, 17.0]) {
+const CYCLE = 33.7;
+for (const t of [0.6, 8.0, 16.5]) {
   const a = await shoot(t);
   const b = await shoot(t);
   const floor = diff(a, b);
 
-  const later = await shoot(t + 35.0);
+  const later = await shoot(t + CYCLE);
   const d = diff(a, later);
 
   check(
-    `T+${t} repeats at T+${t + 35}`,
+    `T+${t} repeats at T+${t + CYCLE}`,
     d <= Math.max(floor * 1.6, 0.004),
     `${(d * 255).toFixed(2)}/255 against a drift floor of ${(floor * 255).toFixed(2)}`,
   );

@@ -56,8 +56,8 @@ const CAPTURES = [
   { name: "glide", t: 4.1, black: 0.185, accent: 0.02 },
   { name: "assembly-early", t: 6.4, black: 0.18, accent: 0.035 },
   { name: "assembly-late", t: 10.5, black: 0.165, accent: 0.085 },
-  { name: "complete", t: 15.2, black: 0.17, accent: 0.09 },
-  { name: "settled", t: 17.5, black: 0.165, accent: 0.085 },
+  { name: "complete", t: 13.9, black: 0.17, accent: 0.09 },
+  { name: "settled", t: 16.5, black: 0.165, accent: 0.085 },
 ];
 
 const TOLERANCE = 0.03;
@@ -332,6 +332,22 @@ console.log("  " + "-".repeat(74));
 for (const cap of CAPTURES) {
   await page.evaluate((t) => window.__claradixSeek?.(t), cap.t);
   await page.waitForTimeout(420);
+
+  // The UI's entrance runs on WALL time, not scene time, and the countdown
+  // dial sits inside the measured world half — so a capture taken while it
+  // is mid-fade measures a different frame every run. Wait for every
+  // revealing element to be settled (0 or 1) before reading pixels.
+  await page
+    .waitForFunction(
+      () =>
+        [...document.querySelectorAll("[data-reveal]")].every((el) => {
+          const o = parseFloat(getComputedStyle(el).opacity);
+          return o < 0.01 || o > 0.99;
+        }),
+      null,
+      { timeout: 20000, polling: 120 },
+    )
+    .catch(() => {});
 
   const png = decodePng(await page.screenshot());
   const from = Math.floor(png.width * UI_EDGE);

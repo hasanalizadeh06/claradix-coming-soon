@@ -285,6 +285,10 @@ void main() {
                       hash21(vec2(win, 7.7)));
       float t0 = win * ${f(SKY.meteors.window)} + 0.4
                + hash21(vec2(win, 3.9)) * (${f(SKY.meteors.window)} - dur - 1.0);
+      // Per-meteor size: some burn small and quick, some carve wide — the
+      // sky stops repeating itself.
+      float mScale = mix(${f(SKY.meteors.scale[0])}, ${f(SKY.meteors.scale[1])},
+                         hash21(vec2(win, 37.7)));
       float mp = (uSceneTime - t0) / dur;
       if (mp > 0.0 && mp < 1.0) {
         // Aspect-corrected screen space, so the streak is straight and its
@@ -303,18 +307,20 @@ void main() {
 
         float tailLen = mix(${f(SKY.meteors.tailLength[0])}, ${f(SKY.meteors.tailLength[1])},
                             hash21(vec2(win, 31.7)))
+                      * mScale
                       * smoothstep(0.0, 0.35, mp);
         vec2 tail0 = head - dirA * tailLen;
         float h01 = clamp(dot(Pa - tail0, dirA) / max(tailLen, 1e-4), 0.0, 1.0);
         float dSeg = length(Pa - (tail0 + dirA * tailLen * h01));
 
-        // Gaussian cross-section ~1.7px; quadratic fade along the tail so
-        // the head burns and the tail breathes out.
-        float w = 1.7 / uResolution.y;
+        // Gaussian cross-section ~1.7px at scale 1; quadratic fade along the
+        // tail so the head burns and the tail breathes out.
+        float w = 1.7 * mScale / uResolution.y;
         float core = exp(-dSeg * dSeg / (2.0 * w * w));
         float life = smoothstep(0.0, 0.1, mp) * (1.0 - smoothstep(0.6, 1.0, mp));
         color += vec3(0.82, 1.0, 0.88)
-               * (core * h01 * h01 * life * ${f(SKY.meteors.brightness)});
+               * (core * h01 * h01 * life
+                  * ${f(SKY.meteors.brightness)} * (0.75 + 0.35 * mScale));
       }
     }
   }

@@ -936,10 +936,14 @@ void main(){
     // crossing pulse. Never everywhere at once: at any instant roughly one
     // node in eight is glinting, which is what "earned" looks like.
     if (isNode) {
+      // The end gate exists only in loop mode — with the loop off the bridge
+      // stands forever, and so do its glints.
+      float winEnd = uLoop > 0.5
+        ? 1.0 - smoothstep(${f(REWIND_START)} - 0.6, ${f(REWIND_START)}, t)
+        : 1.0;
       float win = smoothstep(${f(TIMELINE.phase5_livingStart)} + 0.5,
                              ${f(TIMELINE.phase5_livingStart)} + 1.3, t)
-                * (1.0 - smoothstep(${f(REWIND_START)} - 0.6,
-                                    ${f(REWIND_START)}, t));
+                * winEnd;
       float g = fract(aHash * 17.13 + t * 0.085);
       float gate = smoothstep(0.86, 0.9, g) * (1.0 - smoothstep(0.94, 0.98, g));
       float glint = pow(0.5 + 0.5 * sin(t * TAU * 1.7 + aHash * 41.0), 6.0);

@@ -32,7 +32,6 @@ export const SITE = {
     linkedin: "https://www.linkedin.com/company/claradix/",
     instagram: "https://instagram.com/claradix_llc",
     facebook: "https://www.facebook.com/profile.php?id=100076390094082",
-    behance: "https://www.behance.net/",
   },
 } as const;
 
@@ -90,15 +89,17 @@ export const SCENE = {
   playIntro: true,
 
   /**
-   * Replay forever: build → hold → reverse → build.
+   * Replay forever: build → hold → black hole → burst → build.
    *
-   * TRUE by design — the master timeline's explicit requirement is that the
-   * world "simply continues breathing forever" with no visible reset. The old
-   * objection (a page that dismantles itself under a reader) is answered by the
-   * UI, not the scene: the page reveals once and STAYS — only the world behind
-   * it cycles. See reveal.ts, "once revealed, it stays revealed".
+   * FALSE by client decision (2026-08-01): the bridge builds once and stays.
+   * THE MACHINERY REMAINS FULLY WIRED — flip this one flag to true and the
+   * whole Act IV choreography (suction, detonation, world-covering rain, the
+   * seamless 33.7s cycle) comes back exactly as designed. Everything
+   * downstream derives from this flag and the shared constants; nothing else
+   * needs touching. The loop-check exercises it via the runtime toggle
+   * (__scene.loop) so it cannot rot while switched off.
    */
-  loop: true,
+  loop: false,
 
   /** Global multiplier on every duration in TIMELINE. Practical floor 0.55. */
   timeScale: 1.0,
@@ -139,16 +140,21 @@ export const TIMELINE = {
   phase1_awakeningStart: 0.8,
   phase2_glideStart: 3.4,
   phase3_assemblyStart: 5.2,
-  phase4_completionStart: 14.8,
-  phase5_livingStart: 15.6,
+  /** The build sweep runs 20% faster (client, 2026-08-01). */
+  phase4_completionStart: 13.5,
+  phase5_livingStart: 14.3,
 
-  /** UI reveal runs as the last particles land — Act III is when the page is
-   *  read, and the bridge holding still underneath it is the reward. */
-  uiRevealStart: 15.0,
-  /** When the LAST element BEGINS its fade. It finishes 520ms later. */
-  uiRevealLastStart: 17.6,
+  /**
+   * The page arrives WHILE the comet is still building. With the gathering
+   * skipped in no-loop mode (INTRO_START = 4.6), scene T+12 is ~7.4s of wall
+   * time after load — the wait the client approved — and the finished bridge
+   * lands as the last words settle.
+   */
+  uiRevealStart: 12.0,
+  /** When the LAST element BEGINS its fade. It finishes 950ms later. */
+  uiRevealLastStart: 15.1,
   /** When the page is actually, fully readable. */
-  uiRevealEnd: 18.12,
+  uiRevealEnd: 16.05,
 } as const;
 
 export type Phase = 0 | 1 | 2 | 3 | 4 | 5 | 6;
@@ -403,12 +409,17 @@ export const SKY = {
    * in the sky, still not a glowing one.
    */
   meteors: {
-    window: 17.5,
+    /** CYCLE_LENGTH / 4 (33.7 ÷ 4) — twice the old frequency (client,
+     *  2026-08-01: "repeat 50% sooner") and still wrap-safe in loop mode. */
+    window: 8.425,
     probability: 0.55,
     duration: [0.9, 1.4] as const,
     brightness: 0.58,
     /** Screen-height units. */
     tailLength: [0.1, 0.2] as const,
+    /** Per-meteor size variation (client: "one 1.2x, another 0.7x") —
+     *  hash-picked per window; scales width, tail and brightness together. */
+    scale: [0.65, 1.3] as const,
   },
 } as const;
 
@@ -854,8 +865,11 @@ export const ORB = {
    * mountain waypoint dives into the [900,-820] framing ridge so the comet
    * is genuinely occluded there, not merely fogged.
    */
+  /** Formation happens OFF-SCREEN (client, 2026-08-01: "outside the field of
+   *  view") — the risers stream out past the top-left edge, and the orb
+   *  enters the frame already formed, gliding in behind the text. */
   tour: [
-    [-60, 390, -140],
+    [-420, 470, -100],
     [-100, 260, 0],
     [80, 200, 140],
     [1200, 240, -480],
@@ -882,8 +896,9 @@ export const ORB = {
   ] as ReadonlyArray<readonly [number, number, number]>,
 
   boom: {
-    /** Detonation instant. Every particle is aboard by ~28.7. */
-    at: 29.4,
+    /** Detonation instant (loop mode): REWIND_START (18.7) + 9.4 — every
+     *  particle is aboard by ~27.4. */
+    at: 28.1,
     /** Outward flight speed toward the seeds. */
     speed: 380,
     minDur: 1.2,
@@ -1033,13 +1048,13 @@ export const PARTICLES = {
  * cross-section is ~1.0s, so everything appears to emerge TOGETHER while
  * still being causally honest about load-bearing order.
  *
- * Boundary check:
+ * Boundary check (sweep 20% faster per client, 2026-08-01):
  *   first — pier at u=1:      7.400 + 0     + 0.000 = 7.400   = orb arrival
- *   last  — railing at u=0:   7.400 + 6.400 + 1.000 = 14.800  = phase4 start
+ *   last  — railing at u=0:   7.400 + 5.100 + 1.000 = 13.500  = phase4 start
  */
 export const ASSEMBLY = {
   windowStart: 7.4,
-  windowSpan: 6.4,
+  windowSpan: 5.1,
   /** Load-bearing order. You cannot hang a cable from a tower that is not there. */
   layerOffset: {
     piers: 0.0,
@@ -1080,11 +1095,14 @@ export const RIVER = {
 // ---------------------------------------------------------------------------
 
 export const INTERACTION = {
-  influenceRadius: 90,
+  /** Tightened (client, 2026-08-01: "smaller radius, no absurd distortions" —
+   *  worst at mid-span, where the deck, cables, hangers and traffic stack in
+   *  one small screen area and a wide field churned them all at once). */
+  influenceRadius: 62,
   /** Full strength inside. Prevents a normalize() singularity at d = 0. */
-  innerRadius: 26,
-  /** 30u against a 468u main span — 6.4%. Law 5 survives by construction. */
-  maxDisplacement: 30,
+  innerRadius: 18,
+  /** ~4% of the main span. Law 5 survives by construction. */
+  maxDisplacement: 20,
 
   spring: { stiffness: 6.0, damping: 0.86 },
 
@@ -1443,10 +1461,17 @@ export const POSTFX = {
   textScrim: { opacity: 0.86, extent: 0.52 },
 } as const;
 
-/** The single pulse the scene is allowed. Fires once per build, never repeats. */
+/**
+ * The pulse — one band of brightness travelling the span, far → near, the
+ * same direction the build ran. RECURS while the bridge stands complete
+ * (client, 2026-08-01: every 10 seconds), computed as a pure function of the
+ * clock — no fired-flags, so seeking and the loop wrap stay exact. In loop
+ * mode it fires inside the stillness window only.
+ */
 export const COMPLETION_PULSE = {
   startDelay: 0.2,
   duration: 0.5,
+  repeatEvery: 10.0,
   bandWidth: 190,
   peakBrightness: 1.0,
   recoveryMs: 260,
@@ -1471,6 +1496,11 @@ export const UI_REVEAL = {
   easing: "cubic-bezier(0.16, 1, 0.3, 1)",
   translateY: 12,
 
+  /**
+   * WIDER gaps than the original 0.15–0.25s (client, 2026-08-01: "they all
+   * arrive at once — let them come one by one"): each element now has room
+   * to be SEEN starting before the next begins.
+   */
   sequence: [
     { id: "logo", offset: 0.0 },
     /**
@@ -1480,18 +1510,18 @@ export const UI_REVEAL = {
      * somebody typed 120, which is how a twelfth element stays invisible in a
      * document that describes eleven.
      */
-    { id: "tagline", offset: 0.15 },
-    { id: "eyebrow", offset: 0.3 },
+    { id: "tagline", offset: 0.2 },
+    { id: "eyebrow", offset: 0.4 },
     /** The headline reveals line by line — blocks are seen, lines are read. */
-    { id: "headline-line-1", offset: 0.55 },
-    { id: "headline-line-2", offset: 0.75 },
-    { id: "headline-line-3", offset: 0.95 },
-    { id: "subheadline", offset: 1.2 },
-    { id: "cta", offset: 1.45 },
-    { id: "socials", offset: 1.7, childStagger: 0.06 },
-    { id: "countdown-ring", offset: 1.95, ringDrawDuration: 0.8 },
-    { id: "countdown-units", offset: 2.4, childStagger: 0.07 },
-    { id: "footer", offset: 2.6 },
+    { id: "headline-line-1", offset: 0.65 },
+    { id: "headline-line-2", offset: 0.9 },
+    { id: "headline-line-3", offset: 1.15 },
+    { id: "subheadline", offset: 1.45 },
+    { id: "cta", offset: 1.75 },
+    { id: "socials", offset: 2.05, childStagger: 0.07 },
+    { id: "countdown-ring", offset: 2.4, ringDrawDuration: 0.8 },
+    { id: "countdown-units", offset: 2.8, childStagger: 0.08 },
+    { id: "footer", offset: 3.1 },
   ],
 } as const;
 
@@ -1548,8 +1578,19 @@ export const LOOP = {
  */
 export const REWIND_START = TIMELINE.phase5_livingStart + LOOP.holdAfterComplete;
 
-/** 35.0s exactly, which is not a coincidence — the constants were chosen for it. */
+/** 33.7s exactly, which is not a coincidence — the constants were chosen for it. */
 export const CYCLE_LENGTH = REWIND_START + LOOP.returnWindow;
+
+/**
+ * Where the scene clock BEGINS on load.
+ *
+ * With the loop off (the default), the gathering act is skipped entirely —
+ * the page opens with the light-orb already formed and gliding in (client,
+ * 2026-08-01: "start directly with the orb in the sky"). Enable the loop and
+ * the clock starts at zero, because the cycle then owns the gathering as its
+ * own first act.
+ */
+export const INTRO_START = SCENE.loop ? 0 : ORB.tourDepart + 0.8;
 
 // ---------------------------------------------------------------------------
 // PERF

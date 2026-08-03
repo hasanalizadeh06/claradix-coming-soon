@@ -38,18 +38,37 @@
  */
 
 import { useEffect, useState } from "react";
+import { isMeasurementAgent } from "./agent";
 import { TIMELINE, UI_REVEAL } from "./config";
 import { ticker } from "./ticker";
 
 /**
  * How long to wait in wall-clock seconds before revealing regardless.
  *
+ * Was 20; measured against a human deciding whether the page is broken, that
+ * is far too long — and the constitution's own phrasing decides it: the
+ * animation is the treat, the page is the point. Seven seconds keeps a slow
+ * device readable while a healthy one still reveals on the scene clock.
+ *
  * Generous against the 12.4s scene target, so a healthy device always reveals
  * on the scene clock and this never fires. Short enough that a broken one is
  * readable well inside the window where a visitor is still deciding whether the
  * page is broken.
  */
-const DEADLINE_SECONDS = 20;
+const DEADLINE_SECONDS = 7;
+
+/**
+ * Set by SceneCanvas when it KNOWS the film is never coming — no WebGL,
+ * static tier, measurement agent. The reveal must not spend the deadline
+ * waiting for a scene clock that will never start; a no-WebGL visitor was
+ * staring at a hidden page for the full wall-clock timeout, which is "the
+ * page is never hostage" violated by the page's own safety net.
+ */
+let sceneImpossible = false;
+
+export function sceneWillNotCome(): void {
+  sceneImpossible = true;
+}
 
 function prefersReducedMotion(): boolean {
   return (
@@ -70,6 +89,17 @@ export function useUiReveal(): boolean {
   const [revealed, setRevealed] = useState(false);
 
   useEffect(() => {
+    // A measurement agent cannot watch a film. It gets what a reduced-motion
+    // visitor gets: the settled page, immediately. (index.html's inline script
+    // has already declined to add the `js` class for these visitors, so the
+    // prerendered text was never hidden in the first place — this just brings
+    // the React state in line with what is already on screen.)
+    if (isMeasurementAgent()) {
+      instantReveal = true;
+      setRevealed(true);
+      return;
+    }
+
     if (prefersReducedMotion()) {
       instantReveal = true;
       setRevealed(true);
@@ -94,7 +124,7 @@ export function useUiReveal(): boolean {
       const byDeadline =
         (performance.now() - startedAt) / 1000 >= DEADLINE_SECONDS;
 
-      if (bySceneClock || byDeadline) {
+      if (bySceneClock || byDeadline || sceneImpossible) {
         setRevealed(true);
         return;
       }

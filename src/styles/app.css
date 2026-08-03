@@ -178,14 +178,32 @@ input {
  * hidden behind a loading gate.
  * ----------------------------------------------------------------------- */
 
+/** MOTION only. The expo ease belongs here — a fast settle reads as poise. */
 @keyframes rise {
   from {
+    transform: translate3d(0, 16px, 0);
+  }
+  to {
+    transform: none;
+  }
+}
+
+/**
+ * OPACITY, on its own linear clock.
+ *
+ * It used to ride inside `rise`, sharing --ease-out — and
+ * cubic-bezier(0.16, 1, 0.3, 1) is roughly 90% complete in the first FIFTH
+ * of its duration. A 950ms entrance therefore spent ~850ms of itself already
+ * opaque: the fade was over before it registered, which is what "the text
+ * just appears" was describing. Lengthening the duration could never have
+ * fixed it; the curve was the problem.
+ */
+@keyframes fadeIn {
+  from {
     opacity: 0;
-    transform: translate3d(0, 14px, 0);
   }
   to {
     opacity: 1;
-    transform: none;
   }
 }
 
@@ -198,8 +216,19 @@ input {
   }
 }
 
+/**
+ * `both`, NOT `forwards` — and this is the bigger of the two bugs it fixes.
+ *
+ * With `forwards` alone nothing fills BACKWARDS, so during its stagger delay
+ * an element rendered at its natural opacity: every one of the twelve became
+ * fully visible the instant the waiting class came off, then snapped back to
+ * zero when its own animation finally started. The choreography was real and
+ * was being played on top of a page that had already appeared all at once.
+ */
 .enter {
-  animation: rise var(--dur-base) var(--ease-out) forwards;
+  animation:
+    rise var(--dur-enter, var(--dur-base)) var(--ease-out) both,
+    fadeIn var(--dur-enter, var(--dur-base)) linear both;
   animation-delay: calc(var(--enter-delay, 0) * 1ms);
 }
 
@@ -325,15 +354,36 @@ input {
   /*
    * LONGHAND on purpose: the shorthand would replace `.enter`'s entrance
    * animation entirely — the eyebrow then pops with no rise and reveal-check
-   * reads its delay as 0. Two animations, each with its own timing: the
-   * entrance (choreographed delay from --enter-delay) and the breathe.
+   * reads its delay as 0. Three animations, each on its own clock: the rise,
+   * the fade, and the breathe. The first two must mirror `.enter` exactly.
    */
-  animation-name: rise, eyebrowBreathe;
-  animation-duration: var(--dur-base), 5.2s;
-  animation-timing-function: var(--ease-out), ease-in-out;
-  animation-delay: calc(var(--enter-delay, 0) * 1ms), 1.8s;
-  animation-iteration-count: 1, infinite;
-  animation-fill-mode: forwards, none;
+  animation-name: rise, fadeIn, eyebrowBreathe;
+  animation-duration:
+    var(--dur-enter, var(--dur-base)), var(--dur-enter, var(--dur-base)), 5.2s;
+  animation-timing-function: var(--ease-out), linear, ease-in-out;
+  animation-delay:
+    calc(var(--enter-delay, 0) * 1ms), calc(var(--enter-delay, 0) * 1ms), 1.8s;
+  animation-iteration-count: 1, 1, infinite;
+  animation-fill-mode: both, both, none;
+}
+
+/*
+ * The settled state, restated for the eyebrow.
+ *
+ * `.enter--settled` cannot reach it: both selectors weigh 0-1-0 and this
+ * block is further down the file, so the eyebrow's own animation list wins
+ * and it would replay its entrance on every remount. The breathe survives —
+ * it is ambience, not choreography.
+ */
+.eyebrow.enter--settled {
+  animation-name: eyebrowBreathe;
+  animation-duration: 5.2s;
+  animation-timing-function: ease-in-out;
+  animation-delay: 0s;
+  animation-iteration-count: infinite;
+  animation-fill-mode: none;
+  opacity: 1;
+  visibility: visible;
 }
 
 @keyframes eyebrowBreathe {

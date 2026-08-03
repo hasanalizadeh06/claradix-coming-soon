@@ -25,6 +25,7 @@
 import {
   A11Y,
   CYCLE_LENGTH,
+  INTRO_START,
   LOOP,
   SCENE,
   TIMELINE,
@@ -114,9 +115,10 @@ class Ticker {
 
   /**
    * Scene time is not simply `elapsed * timeScale`: a seek moves the origin
-   * without touching wall time, so the two are tracked separately.
+   * without touching wall time, so the two are tracked separately. It starts
+   * at INTRO_START — zero in loop mode, past the gathering otherwise.
    */
-  private sceneTime = 0;
+  private sceneTime = INTRO_START;
   private timeScale: number = SCENE.timeScale;
   private paused = false;
 

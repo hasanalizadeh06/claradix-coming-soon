@@ -92,6 +92,9 @@
   --dur-fast: 260ms;
   --dur-base: 620ms;
   --dur-slow: 1100ms;
+  /** Entrance choreography only — long enough that each element is SEEN
+   *  arriving (client: the reveals read as sudden at 620ms). */
+  --dur-enter: 950ms;
 
   --z-scene: 0;
   --z-scrim: 1;

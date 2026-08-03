@@ -65,7 +65,10 @@ const check = (name, ok, detail) => {
 // A held field, not an envelope. An earlier version fired on approach and
 // decayed on its own, so the bridge began rebuilding while the visitor was
 // still pointing at it — which reads as a flicker, not as a response.
-await page.mouse.move(W * 0.72, H * 0.66);
+// On the main span itself — the old (0.72, 0.66) point sat on the ground
+// below the deck in the luminous-highway composition, and with the tightened
+// influence radius a near-miss correctly reads as a near-miss.
+await page.mouse.move(W * 0.5, H * 0.44);
 const peak = await until(page, () => window.__cursorStrength ?? 0, (v) => v > 0.6);
 
 const trace = [];

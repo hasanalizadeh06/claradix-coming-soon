@@ -42,6 +42,9 @@ export interface GroundStreamsHandle {
    *  `sceneT` is the wrapped clock the existence gates read. */
   update(intensity: number, elapsed: number, sceneT: number): void;
   setPointScale(v: number): void;
+  /** Loop mode governs the falls and the pre-wrap fade — with the loop off
+   *  the bridge stands forever and so does its traffic. */
+  setLoop(on: boolean): void;
   dispose(): void;
 }
 
@@ -165,6 +168,7 @@ uniform float uElapsed;
 uniform float uSceneT;
 uniform float uIntensity;
 uniform float uPointScale;
+uniform float uLoop;
 
 varying float vBrightness;
 varying float vFog;
@@ -204,7 +208,7 @@ void main(){
 
   float brightness = 0.72 + 0.28 * sin(uElapsed * TAU * (0.16 + aHash * 0.22) + aHash * TAU);
 
-  if (t >= fallAt) {
+  if (uLoop > 0.5 && t >= fallAt) {
     // THE FALL. The bridge that held this packet is gone: it drops from the
     // roadway straight down onto the ground directly beneath — exactly where
     // the bridge stood — and gutters out in the dark.
@@ -233,10 +237,13 @@ void main(){
     pos.y += sin(uElapsed * TAU * 0.5 * (0.7 + aHash) + aHash * TAU) * 0.5;
   }
 
-  // Existence gates: not yet built, and the pre-wrap settle (everything must
-  // be dark before T+35.000 so the wrap is invisible).
+  // Existence gates: not yet built, and — loop mode only — the pre-wrap
+  // settle (everything must be dark before the wrap so the seam is
+  // invisible). With the loop off the traffic simply keeps flowing.
   brightness *= born;
-  brightness *= 1.0 - smoothstep(${f(CYCLE_LENGTH - 1.9)}, ${f(CYCLE_LENGTH - 0.7)}, t);
+  if (uLoop > 0.5) {
+    brightness *= 1.0 - smoothstep(${f(CYCLE_LENGTH - 1.9)}, ${f(CYCLE_LENGTH - 0.7)}, t);
+  }
   brightness *= uIntensity;
 
   vBrightness = clamp(brightness, 0.0, 1.0);
@@ -278,6 +285,7 @@ void main(){
       uSceneT: { value: 0 },
       uIntensity: { value: 0 },
       uPointScale: { value: 1 },
+      uLoop: { value: 0 },
     },
     transparent: true,
     blending: THREE.AdditiveBlending,
@@ -300,6 +308,9 @@ void main(){
     },
     setPointScale(v) {
       material.uniforms.uPointScale.value = v;
+    },
+    setLoop(on) {
+      material.uniforms.uLoop.value = on ? 1 : 0;
     },
     dispose() {
       geometry.dispose();
