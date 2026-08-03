@@ -223,11 +223,19 @@ void main(){
   color += uGlow * (fres * envFacing * vertical * breathe * 0.6);
 
   // THE STRUCTURAL LINES — bevels, groove strips, joints, anchor plates.
-  // aEdge selects them; the strongest, camera-facing runs cross the bloom
-  // threshold and earn the subtle halo the brief asks for.
+  // aEdge selects them; the vertical groove strips carry the FULL tag
+  // while the body chamfers sit at 0.72, so the outer vertical edges are
+  // unmistakably the brightest runs on the mast (2026-08-04 luminous-
+  // architecture pass).
   float facing = clamp(dot(n, viewDir), 0.0, 1.0);
   color += uGlow * (vEdge * envFacing * vertical
-                    * (0.12 + 0.5 * facing) * breathe);
+                    * (0.18 + 0.6 * facing) * breathe);
+
+  // Warm-white peak highlights ONLY where the energy peaks — the cap and
+  // the uppermost edge runs. Tiny, and the only non-green light on the
+  // structure.
+  color += vec3(0.30, 0.36, 0.26)
+         * (vEdge * smoothstep(0.94, 1.0, vH) * facing * breathe);
 
   // PANEL SEAMS — segmental construction: thin horizontal joints where
   // the lifts meet, lit in the brand green on lit faces.
@@ -263,6 +271,63 @@ export function createTowerStructures(
     transparent: false,
     depthTest: true,
     depthWrite: true,
+  });
+
+  /**
+   * THE GLOW SHELL (2026-08-04 luminous-architecture pass): the same leg
+   * geometry inflated ~1.1u along its normals, rendered additively with a
+   * silhouette-hugging fresnel. This is the "light physically emitted by
+   * the structure, softly spilling into the atmosphere" — a tight
+   * volumetric halo that fades with distance through the same fog law,
+   * not a screen-space bloom.
+   */
+  const shellMaterial = new THREE.ShaderMaterial({
+    vertexShader: /* glsl */ `
+attribute float aH;
+
+varying vec3 vWorld;
+varying vec3 vNrm;
+varying float vH;
+
+void main(){
+  vec3 p = position + normal * 1.1;
+  vec4 world = modelMatrix * vec4(p, 1.0);
+  vWorld = world.xyz;
+  vNrm = normalize(mat3(modelMatrix) * normal);
+  vH = aH;
+  gl_Position = projectionMatrix * viewMatrix * world;
+}
+`,
+    fragmentShader: /* glsl */ `
+precision highp float;
+
+uniform vec3 uGlow;
+
+varying vec3 vWorld;
+varying vec3 vNrm;
+varying float vH;
+
+void main(){
+  vec3 n = normalize(vNrm);
+  vec3 viewDir = normalize(cameraPosition - vWorld);
+  float dist = distance(cameraPosition, vWorld);
+
+  float fres = pow(1.0 - abs(dot(n, viewDir)), 2.2);
+  float vertical = mix(0.2, 1.0, vH * vH);
+  float fog = clamp((dist - ${f(WORLD.fogNear)}) /
+                    ${f(WORLD.fogFar - WORLD.fogNear)}, 0.0, 1.0);
+
+  vec3 c = uGlow * (fres * vertical * 0.16 * (1.0 - fog));
+  gl_FragColor = vec4(c, 1.0);
+}
+`,
+    uniforms: {
+      uGlow: { value: new THREE.Vector3(...TOWER_GLOW.glow) },
+    },
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthTest: true,
+    depthWrite: false,
   });
 
   interface TowerRig {
@@ -334,7 +399,9 @@ export function createTowerStructures(
       // --- the leg: one lofted taper, base ring → saddle ring ------------
       // Width tapers subtly, depth halves, and the centre LEANS inward so
       // the top lands on the cable line. Split into two segments so the
-      // profile can ease rather than cone linearly.
+      // profile can ease rather than cone linearly. Body chamfers carry
+      // 0.72 of the edge tag — the vertical groove strips (1.0) must
+      // outshine them.
       const midH = yTop * 0.55;
       const midW = THREE.MathUtils.lerp(baseW, topW, 0.5);
       const midD = THREE.MathUtils.lerp(baseD, topD, 0.62);
@@ -344,7 +411,7 @@ export function createTowerStructures(
         ring(cx, baseW, baseD, 6),
         ring(cxMid, midW, midD, midH),
         0.05, 0.55,
-        1,
+        0.72,
         false,
       );
       loft(
@@ -352,7 +419,7 @@ export function createTowerStructures(
         ring(cxMid, midW, midD, midH),
         ring(cxTop, topW, topD, yTop),
         0.55, 0.96,
-        1,
+        0.72,
         false,
       );
 
@@ -404,7 +471,13 @@ export function createTowerStructures(
         }
       }
 
-      addMesh(pivot, sinkToGeometry(sink));
+      const legGeo = sinkToGeometry(sink);
+      addMesh(pivot, legGeo);
+      // The glow shell shares the leg geometry — inflation happens in its
+      // own vertex shader.
+      const shell = new THREE.Mesh(legGeo, shellMaterial);
+      shell.renderOrder = 3;
+      pivot.add(shell);
     });
 
     // --- the structural crossbeam: arched underside, embedded ends -------
@@ -481,6 +554,7 @@ export function createTowerStructures(
     dispose() {
       for (const geo of geometries) geo.dispose();
       material.dispose();
+      shellMaterial.dispose();
     },
   };
 }

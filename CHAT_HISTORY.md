@@ -944,3 +944,29 @@ five independently drifting layers:
 Five tempos, none synchronized; every layer occluded correctly by the
 energy bodies; everything still under the bloom threshold — the sky
 never blooms, and it no longer competes with the bridge.
+
+---
+
+## Round 17: luminous towers and edge energy (2026-08-04)
+
+Two focused improvements, geometry untouched:
+
+**The towers became luminous architecture.** The lighting hierarchy was
+rebuilt so the brightest runs are exactly where the brief points: the
+vertical outer groove lines (full edge tag, while body chamfers dropped
+to 0.72) and the top caps, which alone carry a tiny warm-white peak —
+the only non-green light on the structure. Around each mast a glow
+shell now hugs the silhouette: the same leg geometry inflated along its
+normals and rendered additively with a fresnel falloff and the scene's
+fog law — light physically spilling from the structure into the
+atmosphere, fading with distance, with no screen-space bloom involved.
+
+**The deck gained its edge energy.** The lateral distribution flipped
+from center-weighted to EDGE-weighted: over half the packets now ride
+two bell-shaped bands at ~81% of the half-width, leaving a calmer,
+readable centre between two living ribbons of light. Edge packets are
+brighter (+40%), sparkle more (a rare, subtle pow-18 glint gate,
+strongest on the boundaries), and a floater minority hovers a few units
+above the surface while the rest stay embedded — depth through
+behavior. The outer border moved outward and softened: the edges burn,
+then density dissolves; nothing ever cuts.

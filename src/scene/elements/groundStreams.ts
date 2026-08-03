@@ -150,7 +150,19 @@ export function createGroundStreams(
     aSpeed[i] = rng.range(0.035, 0.11);
     // Sum of two uniforms = triangular PDF: peak density on the invisible
     // spline, linear falloff to the edges. No lane exists to be counted.
-    aLane[i] = (rng.next() + rng.next() - 1) * RIVER_HALF;
+    // EDGE-WEIGHTED distribution (2026-08-04 pass: "energy naturally
+    // accumulating along the boundaries"): 55% of packets ride the two
+    // edge bands — bell-shaped around ±0.81 of the half-width — and the
+    // rest fill a softer triangular interior, so the deck reads as two
+    // luminous ribbons flanking a readable centre, with density fading
+    // between them rather than cutting.
+    if (rng.next() < 0.55) {
+      const side = rng.next() < 0.5 ? -1 : 1;
+      aLane[i] =
+        side * RIVER_HALF * (0.66 + 0.3 * ((rng.next() + rng.next()) / 2));
+    } else {
+      aLane[i] = (rng.next() + rng.next() - 1) * RIVER_HALF * 0.72;
+    }
     aHash[i] = rng.next();
   }
 
@@ -236,8 +248,12 @@ void main(){
 
   // DEPTH — stacked layers, not a sheet: packets ride up to ~2u above and
   // below the mean surface, and each oscillates vertically at its own
-  // amplitude and rate. Volume without a surface ever existing.
+  // amplitude and rate. A FLOATER minority (~15%) hovers a few units
+  // above the deck entirely — embedded flow below, drifting sparks
+  // above. Volume without a surface ever existing.
   float depth = (fract(aHash * 7.91) - 0.5) * 4.2;
+  float floater = step(0.85, fract(aHash * 3.31));
+  depth += floater * (1.5 + 2.6 * fract(aHash * 8.83));
   float rideY = deckP.y + ${f(BRIDGE.deckCamber)} + 0.9 + depth;
 
   // --- existence: the deck's own schedule ------------------------------
@@ -308,14 +324,23 @@ void main(){
   brightness *= mix(0.6, 1.0, smoothstep(0.06, 0.5, u));
   brightness *= 1.0 - smoothstep(0.74, 0.98, u);
 
-  // THE EDGES DISSOLVE: past 60% of the LOCAL half-width the energy simply
-  // thins until it is gone — the landscape's borders are density, never a
-  // cut. And a slow spatial CLUMPING field breaks the surface into drifts,
-  // pools and small gaps, so nothing ever reads flat or procedural.
-  brightness *= 1.0 - smoothstep(0.6, 1.08,
+  // EDGE ENERGY (2026-08-04 pass): the outer bands are the BRIGHTEST part
+  // of the deck — two living ribbons of accumulated light — with a soft
+  // falloff outward past them (density is the border, never a cut) and a
+  // readable, calmer centre between.
+  float edgeK = smoothstep(0.5, 0.82, abs(aLane) / ${f(RIVER_HALF)});
+  brightness *= 1.0 + 0.4 * edgeK;
+  brightness *= 1.0 - smoothstep(0.88, 1.16,
                                  abs(across) / (${f(RIVER_HALF)} * widthK));
+
+  // Slow spatial clumping — drifts, pools and small gaps — plus rare,
+  // subtle SPARKLES, strongest on the edges: tiny random intensity
+  // lifts, never chaotic.
   brightness *= 0.72 + 0.38 * sin(u * 61.0 + aHash * TAU)
                             * sin(across * 0.17 + uElapsed * 0.26);
+  float tw = pow(0.5 + 0.5 * sin(uElapsed * (1.3 + 2.6 * fract(aHash * 7.7))
+                                 + aHash * TAU), 18.0);
+  brightness *= 1.0 + tw * 0.7 * (0.3 + 0.7 * edgeK);
 
   vec4 viewPos = viewMatrix * vec4(pos, 1.0);
   float viewDist = -viewPos.z;
