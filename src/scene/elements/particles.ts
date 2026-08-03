@@ -519,26 +519,14 @@ export function createParticles(
 
     // --- schedule ----------------------------------------------------------
     //
-    // rise → join the orb → ride it → be deposited when the comet passes u.
-    //
-    // The one hard constraint: a particle must be ABOARD before its deposit
-    // begins. joinLatest enforces it, which naturally makes far-span (early-
-    // seating) particles rise first — the same far-first causality the old
-    // choreography had, arrived at from the deadline instead of a curve.
+    // rise → spiral DIRECTLY into the seat (2026-08-04: no orb, no join, no
+    // riding). Each particle's flight ends exactly at its seat time, so the
+    // lift-off wave sweeps the terrain a few seconds ahead of the
+    // construction front: the world visibly rises to build the bridge.
     const seat = seatAtFor(u, layer, rng.jitter(ASSEMBLY.jitter));
+    const flightDur = rng.range(2.4, 4.6);
 
-    let flightDur = rng.range(ORB.rise.flightDur[0], ORB.rise.flightDur[1]);
-    const joinLatest = seat - ORB.depositDur - ORB.rise.boardingMargin;
-    let join = ORB.rise.joinStart + Math.pow(rng.next(), 0.85) * ORB.rise.joinWindow;
-    join = Math.min(join, joinLatest);
-
-    let rise = join - flightDur;
-    if (rise < ORB.rise.earliestRise) {
-      rise = ORB.rise.earliestRise + rng.next() * 0.3;
-      flightDur = Math.max(join - rise, 0.8);
-    }
-
-    aLiftAt[i] = rise;
+    aLiftAt[i] = seat - flightDur;
     aRollTurns[i] = flightDur;
     aSeatAt[i] = seat;
     // Small temporal jitter on the departure. The build front needed jitter to
@@ -549,9 +537,9 @@ export function createParticles(
 
     // --- per-particle variation --------------------------------------------
     aRollPhase[i] = rng.next() * Math.PI * 2;
-    // cbrt → uniform VOLUME density: the orb reads as a solid ball of light
-    // with a naturally hot core, not a hollow shell.
-    aRollRadius[i] = ORB.radius * Math.cbrt(rng.next());
+    // The spiral's radius — modest and varied, so the flights read as a
+    // flow field of individual helices, never as a collective shape.
+    aRollRadius[i] = rng.range(5, 15);
 
     /**
      * STRUCTURAL NODE FLAG, packed into aSizeVar's integer part (+2.0).
@@ -842,11 +830,10 @@ void main(){
   bool isDeparting = uLoop > 0.5 && t >= aRewindAt && t < landT;
   bool hasLanded   = uLoop > 0.5 && t >= landT;
 
-  bool isDormant     = t < riseAt || hasLanded;
-  bool isSeated      = t >= aSeatAt && !isDeparting && !hasLanded;
-  bool isRising      = !isDormant && !isSeated && !isDeparting && t < joinT;
-  bool isApproaching = !isDormant && !isSeated && !isDeparting && !isRising
-                     && t >= aSeatAt - ${f(ORB.depositDur)};
+  bool isDormant = t < riseAt || hasLanded;
+  bool isSeated  = t >= aSeatAt && !isDeparting && !hasLanded;
+  // Everything else is FLYING: seed → seat, directly. There is no orb, no
+  // boarding, no riding — the 2026-08-04 art-direction revision.
 
   vec3  pos;
   float brightness;
@@ -965,64 +952,41 @@ void main(){
       sizeBoost += sparkle * 0.9;
     }
 
-  } else if (isRising) {
-    // --- ACT I: THE RISE -------------------------------------------------
+  } else {
+    // --- THE FLIGHT: order emerging from chaos ---------------------------
     //
-    // From anywhere on the sleeping landscape, up off the ground it was
-    // resting on, arcing toward the point where the orb WILL be at the
-    // moment of joining. A quadratic bézier whose control point leans along
-    // the seed's surface normal: the hillside visibly exhales its light
-    // upward before the light bends away toward the gathering.
-    vec3 joinPos = orbPathA(joinT);
+    // 2026-08-04 art-direction revision: THERE IS NO ORB. Each particle
+    // lifts off its own patch of ground — perpendicular to the hillside it
+    // was lying on — a few seconds before its seat time, and SPIRALS
+    // directly into its place in the structure. Thousands of these local
+    // helical trajectories running at once, staggered by the seating
+    // schedule, is what the visitor sees: the entire world deciding to
+    // build the bridge. The spiral's radius envelope is sin(πk) — zero at
+    // both ends — so a flight begins as a lift-off and ends AS the
+    // construction, with no seam and no intermediate shape, ever.
     float k = clamp((t - riseAt) / flightDur, 0.0, 1.0);
     float e = easeInOutCubic(k);
 
-    float arcH = mix(${f(ORB.rise.arcHeight[0])}, ${f(ORB.rise.arcHeight[1])},
-                     fract(aHash * 3.17));
-    vec3 ctrl = aSeed + aSeedNormal * arcH + (joinPos - aSeed) * 0.22;
+    float arcH = mix(28.0, 84.0, fract(aHash * 3.17));
+    vec3 ctrl = mix(aSeed, aTarget, 0.42) + aSeedNormal * arcH;
     vec3 ab = mix(aSeed, ctrl, e);
-    vec3 bc = mix(ctrl, joinPos, e);
-    pos = mix(ab, bc, e);
+    vec3 bc = mix(ctrl, aTarget, e);
+    vec3 base = mix(ab, bc, e);
+
+    // The flow-field spiral, wound around the flight's own direction.
+    vec3 dir = normalize(bc - ab + vec3(1e-4, 1e-4, 1e-4));
+    vec3 sideAx = normalize(cross(dir, vec3(0.0, 1.0, 0.0)) + vec3(1e-4));
+    vec3 upAx = cross(sideAx, dir);
+    float turns = mix(1.2, 2.6, fract(aHash * 7.31));
+    float ang = TAU * turns * k + aRollPhase;
+    float rad = aRollRadius * sin(3.14159265 * k);
+    pos = base + (sideAx * cos(ang) + upAx * sin(ang)) * rad;
 
     brightness = mix(${f(PARTICLES.brightness.dormant)},
                      ${f(PARTICLES.brightness.lifting)},
-                     smoothstep(0.0, 0.3, e));
-    brightness = mix(brightness, ${f(ORB.ridingBrightness)},
-                     smoothstep(0.55, 1.0, e));
-
-    // NO-LOOP: the gathering is not part of the story — the page opens with
-    // the orb already holding the bridge. With the build now starting at the
-    // viewer (round 5), the cross-country boarding flights converge THROUGH
-    // the camera and blanket the frame; they fly dark instead, and a
-    // particle first APPEARS inside the comet's own glow.
-    brightness *= uLoop;
-
-  } else {
-    // --- RIDING THE ORB / THE DEPOSIT ------------------------------------
-    //
-    // The particle IS the orb now: its position is the comet's head, sampled
-    // slightly in the past (the lag is the comet's tail — late riders trail
-    // the head along every twist of the baked path), plus its own place in
-    // the seething sphere. Both ease in from zero at the join so there is no
-    // seam against the rise.
-    //
-    // When the comet passes this particle's stretch of the span, the deposit:
-    // a short drop out of the sphere onto the structure.
-    float lagR = ${f(ORB.lagMax)} * fract(aHash * 3.71);
-    float effLag = lagR * smoothstep(joinT, joinT + 1.2, t);
-    float swirlIn = smoothstep(joinT, joinT + 1.0, t);
-    vec3 ride = orbPathA(t - effLag) + swirlOffset(t) * swirlIn;
-
-    if (isApproaching) {
-      float ap = clamp((t - (aSeatAt - ${f(ORB.depositDur)})) / ${f(ORB.depositDur)},
-                       0.0, 1.0);
-      pos = mix(ride, aTarget, smoothstep(0.0, 1.0, ap));
-      brightness = mix(${f(ORB.ridingBrightness)},
-                       ${f(PARTICLES.brightness.approaching)}, ap);
-    } else {
-      pos = ride;
-      brightness = ${f(ORB.ridingBrightness)} * (0.8 + 0.4 * fract(aHash * 6.13));
-    }
+                     smoothstep(0.0, 0.25, k));
+    brightness = mix(brightness, ${f(PARTICLES.brightness.approaching)},
+                     smoothstep(0.72, 1.0, k));
   }
 
   // --- INTERACTION -------------------------------------------------------
@@ -1058,9 +1022,7 @@ void main(){
       // The direction of travel is free here. Position is a pure function of
       // time, so every state already knows the curve it is riding: the guide
       // tangent in flight, the seed normal on the way up.
-      if (isRising) {
-        push -= aSeedNormal * dot(push, aSeedNormal);
-      } else if (!isSeated) {
+      if (!isSeated) {
         vec3 travel = normalize(centrelineTan(aU));
         push -= travel * dot(push, travel);
       }

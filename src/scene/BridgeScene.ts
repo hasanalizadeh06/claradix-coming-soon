@@ -48,13 +48,13 @@ import {
 } from "@/lib/config";
 import { centreline } from "./centreline";
 import { buildTargets } from "./bridgeTargets";
-import { createBridgeFibers } from "./elements/bridgeFibers";
 import { createGroundGlow } from "./elements/groundGlow";
 import { createGroundStreams } from "./elements/groundStreams";
 import { createMist } from "./elements/mist";
 import { createSky } from "./elements/sky";
 import { createTerrain } from "./elements/terrain";
 import { createTerrainNetwork } from "./elements/terrainNetwork";
+import { createTowerStructures } from "./elements/towerStructures";
 import { TRAIL_LAYER, createParticles } from "./elements/particles";
 
 const _tmp = new THREE.Vector3();
@@ -216,12 +216,11 @@ export function createBridgeScene(ctx: SceneContext): SceneHandle {
   const particles = createParticles(targets, terrain);
   scene.add(particles.points);
 
-  // --- the filaments: the bridge's continuous material (pass 2) -----------
-  // After the terrain (tower filaments sample the ground) and alongside the
-  // particles whose choreography they shadow.
-  const fibers = createBridgeFibers(terrain);
-  fibers.setLoop(SCENE.loop);
-  scene.add(fibers.lines);
+  // --- the towers: the bridge's ONLY real geometry (2026-08-04 redesign) --
+  // Opaque, depth-writing masts — the solid anchors the energy flows
+  // between. After the terrain, whose heightfield their feet stand on.
+  const towers = createTowerStructures(terrain);
+  scene.add(towers.group);
 
   // --- camera -------------------------------------------------------------
   //
@@ -290,8 +289,8 @@ export function createBridgeScene(ctx: SceneContext): SceneHandle {
       network: (on) => {
         network.group.visible = on;
       },
-      fibers: (on) => {
-        fibers.lines.visible = on;
+      towers: (on) => {
+        towers.group.visible = on;
       },
       /**
        * The capture harness needs this: under SwiftShader the trail buffer's
@@ -309,7 +308,6 @@ export function createBridgeScene(ctx: SceneContext): SceneHandle {
         particles.material.uniforms.uLoop.value = on ? 1 : 0;
         groundGlow.setLoop(on);
         streams.setLoop(on);
-        fibers.setLoop(on);
       },
     };
     (window as unknown as { __rim?: (v: number) => void }).__rim = (v) =>
@@ -511,9 +509,6 @@ export function createBridgeScene(ctx: SceneContext): SceneHandle {
           pulseU = k <= 1 ? k : -1;
         }
         particles.material.uniforms.uPulseU.value = pulseU;
-        // The same band rides the filament material, so the shimmer is one
-        // event crossing one structure, not two systems coincidentally lit.
-        fibers.setPulseU(pulseU);
       }
 
       // --- the cursor, resolved into the world ----------------------------
@@ -674,7 +669,7 @@ export function createBridgeScene(ctx: SceneContext): SceneHandle {
       terrain.update(frame.elapsed);
       network.update(frame.elapsed);
       groundGlow.update(t);
-      fibers.update(t);
+      towers.update(t, loopEnabled);
       // Existence, the falls and the pre-wrap fade are all derived per-packet
       // inside the traffic shader from the deck's own schedule — the global
       // intensity is only a master fader.
@@ -717,7 +712,7 @@ export function createBridgeScene(ctx: SceneContext): SceneHandle {
         streams.points,
         network.group,
         groundGlow.mesh,
-        fibers.lines,
+        towers.group,
       );
       sky.dispose();
       terrain.dispose();
@@ -726,7 +721,7 @@ export function createBridgeScene(ctx: SceneContext): SceneHandle {
       streams.dispose();
       network.dispose();
       groundGlow.dispose();
-      fibers.dispose();
+      towers.dispose();
     },
   };
 }

@@ -48,19 +48,27 @@ export interface GroundStreamsHandle {
   dispose(): void;
 }
 
+/** ×2.5 (architecture redesign), then ×1.6 again (2026-08-04 refinement:
+ *  "a massive flowing particle field instead of a single strip") — these
+ *  packets ARE the road, and the near fan is now ~2.6× wider, so the
+ *  density has to keep up or the landscape reads as dust. */
 const COUNT_BY_TIER: Record<Tier, number> = {
-  ultra: 6000,
-  high: 4500,
-  medium: 3200,
-  low: 1800,
-  minimal: 800,
+  ultra: 24000,
+  high: 17500,
+  medium: 12500,
+  low: 7000,
+  minimal: 3200,
 };
 
-/** Lateral lane offsets across the widened (74u) deck, world units. Six
- *  lanes — the reference's highway is a broad ribbon of parallel streaks,
- *  not a tight four-lane thread. Railing sits at ±36.5; outermost lane at
- *  ±30 keeps jittered packets inside the roadway. */
-const LANES = [-30, -18, -6, 6, 18, 30] as const;
+/**
+ * THE ROADWAY THAT DOES NOT EXIST (2026-08-04). No lanes — "the viewer
+ * should never perceive organized lanes, only a living stream of light."
+ * Each packet draws a continuous base offset from a TRIANGULAR distribution
+ * (densest on the invisible spline, thinning toward the edges) and then
+ * wanders slowly across the ribbon in the shader: thousands of overlapping
+ * trajectories at different speeds, offsets, brightnesses and depths.
+ */
+const RIVER_HALF = 33;
 
 const GROUND_SAMPLES = 256;
 
@@ -137,12 +145,12 @@ export function createGroundStreams(
 
   for (let i = 0; i < n; i++) {
     aS0[i] = rng.next();
-    // u per second. A full crossing takes 11–25s — deliberate, unhurried
-    // packets, all travelling the SAME direction on the same route.
-    aSpeed[i] = rng.range(0.04, 0.09);
-    // Jitter 1.6 → 0.5 (round 4): the packets ride IN the fiber weave, so a
-    // loose lane reads as noise against the perfectly parallel lines.
-    aLane[i] = LANES[rng.int(LANES.length)] + rng.jitter(0.5);
+    // u per second, WIDE range (2026-08-04: "some move slightly faster,
+    // some slower") — a full crossing takes 9–28s.
+    aSpeed[i] = rng.range(0.035, 0.11);
+    // Sum of two uniforms = triangular PDF: peak density on the invisible
+    // spline, linear falloff to the edges. No lane exists to be counted.
+    aLane[i] = (rng.next() + rng.next() - 1) * RIVER_HALF;
     aHash[i] = rng.next();
   }
 
@@ -191,11 +199,36 @@ void main(){
   float u = fract(aS0 + uElapsed * aSpeed);
   float t = uSceneT;
 
-  // Where the roadway is, and the packet's place on it.
+  // The packet's place on the invisible spline. No lane holds it: a slow
+  // lateral wander carries it across the ribbon, so neighbouring
+  // trajectories continuously merge, separate and reconnect — the roadway
+  // is woven fresh every frame by the flow itself.
   vec3 deckP = centrelinePos(u);
   vec3 bin = centrelineBin(u);
-  vec3 pos = deckP + bin * aLane;
-  float rideY = deckP.y + ${f(BRIDGE.deckCamber)} + 2.0;
+
+  // THE WIDTH FIELD (2026-08-04 refinement): the roadway is a LANDSCAPE,
+  // not a strip. Underfoot it fans to ~2.6× the span width — monumental,
+  // physically large enough to stand on — and funnels down to the portal
+  // width by the main tower. The far half stays narrow only because
+  // perspective makes it so.
+  float widthK = mix(2.6, 1.0, smoothstep(0.05, 0.45, u));
+
+  // Two wander octaves: a slow drift that merges and splits the streams,
+  // and a faster micro-turbulence that keeps the surface from ever
+  // reading flat or procedural.
+  float wA = 2.5 + 7.0 * fract(aHash * 5.31);
+  float wW = 0.05 + 0.1 * fract(aHash * 11.7);
+  float across = aLane * widthK
+               + wA * sin(uElapsed * TAU * wW + aHash * TAU)
+               + (0.6 + 1.1 * fract(aHash * 3.7))
+                 * sin(uElapsed * TAU * (0.21 + 0.2 * fract(aHash * 9.1)) + aHash * 41.0);
+  vec3 pos = deckP + bin * across;
+
+  // DEPTH — stacked layers, not a sheet: packets ride up to ~2u above and
+  // below the mean surface, and each oscillates vertically at its own
+  // amplitude and rate. Volume without a surface ever existing.
+  float depth = (fract(aHash * 7.91) - 0.5) * 4.2;
+  float rideY = deckP.y + ${f(BRIDGE.deckCamber)} + 0.9 + depth;
 
   // --- existence: the deck's own schedule ------------------------------
   // Traffic appears only once the deck at this u has been laid...
@@ -220,9 +253,12 @@ void main(){
     // the bridge stood — and gutters out in the dark.
     float uZ = fract(aS0 + aSpeed * (uElapsed + fallAt - t));
     vec3 deckF = centrelinePos(uZ);
-    pos = deckF + centrelineBin(uZ) * aLane;
+    // The wander freezes at the instant the roadway vanished beneath it.
+    float eF = uElapsed - (t - fallAt);
+    float acrossF = aLane * widthK + wA * sin(eF * TAU * wW + aHash * TAU);
+    pos = deckF + centrelineBin(uZ) * acrossF;
 
-    float deckH = deckF.y + ${f(BRIDGE.deckCamber)} + 2.0;
+    float deckH = deckF.y + ${f(BRIDGE.deckCamber)} + 0.9;
     float floorY = groundYAt(uZ) + 1.3;
 
     float tf = max(t - fallAt, 0.0);
@@ -239,8 +275,10 @@ void main(){
     brightness = (brightness * 0.85 + impact) * (1.0 - smoothstep(0.0, 1.6, lying));
   } else {
     pos.y = rideY;
-    // Small vertical shimmer while riding — traffic, not paint.
-    pos.y += sin(uElapsed * TAU * 0.5 * (0.7 + aHash) + aHash * TAU) * 0.5;
+    // Per-packet vertical oscillation, amplitude and rate individual —
+    // every particle independently alive inside the same global flow.
+    pos.y += sin(uElapsed * TAU * 0.5 * (0.7 + aHash) + aHash * TAU)
+           * (0.35 + 0.75 * fract(aHash * 6.3));
   }
 
   // Existence gates: not yet built, and — loop mode only — the pre-wrap
@@ -251,6 +289,23 @@ void main(){
     brightness *= 1.0 - smoothstep(${f(CYCLE_LENGTH - 1.9)}, ${f(CYCLE_LENGTH - 0.7)}, t);
   }
   brightness *= uIntensity;
+
+  // THE DENSITY ARC (2026-08-04, brief points 4 and 7). The bridge is born
+  // sparse at the viewer, gathers strength as the flow approaches the
+  // towers — where the concentration peaks — and then, past the far tower,
+  // thins and dims until it dissolves into the mountains. No hard endpoint:
+  // the roadway must feel like it continues beyond what is visible.
+  brightness *= mix(0.6, 1.0, smoothstep(0.06, 0.5, u));
+  brightness *= 1.0 - smoothstep(0.74, 0.98, u);
+
+  // THE EDGES DISSOLVE: past 60% of the LOCAL half-width the energy simply
+  // thins until it is gone — the landscape's borders are density, never a
+  // cut. And a slow spatial CLUMPING field breaks the surface into drifts,
+  // pools and small gaps, so nothing ever reads flat or procedural.
+  brightness *= 1.0 - smoothstep(0.6, 1.08,
+                                 abs(across) / (${f(RIVER_HALF)} * widthK));
+  brightness *= 0.72 + 0.38 * sin(u * 61.0 + aHash * TAU)
+                            * sin(across * 0.17 + uElapsed * 0.26);
 
   vec4 viewPos = viewMatrix * vec4(pos, 1.0);
   float viewDist = -viewPos.z;

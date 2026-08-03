@@ -694,3 +694,194 @@ rolled back precisely to the round-7 state:
 Verified by capture: the round-7 composition is back — particle-bodied
 structure over the flowing river roadway, front-swept build. Recorded in
 memory that round 8 must not be re-applied without a fresh explicit ask.
+
+---
+
+## Round 7 reverted too (2026-08-03)
+
+After seeing round 8 rolled back to round 7, the client rejected round 7
+as well ("this is not good either — make it like it was before this
+one"). The surface-reconstruction experiment is fully removed:
+
+- groundStreams back to SIX LANES with tight jitter, original packet
+  counts, ride height +2 over the deck — no wander, no triangular
+  distribution, no dissolving edges;
+- bridgeFibers roadway weave and crisp railing filaments restored;
+- bridgeTargets fiber rows (snapped to the filament lattice) and the
+  crisp railing particle line restored.
+
+The shipped roadway is the pass-2 WOVEN RIBBON: continuous parallel
+filament lanes with particle micro-detail living in them and discrete
+packet traffic riding them. Both round 7 and round 8 are recorded in
+memory as rejected directions never to be re-applied without a fresh
+explicit request.
+
+---
+
+## Round 9: honest supports (2026-08-03)
+
+The client asked why the bridge stood on two different kinds of columns
+- thin double lines AND blocky particle masses. The answer was that two
+systems drew supports: particle piers (fat scatter cylinders every 78u)
+and the tower legs (filament hairlines + a merged particle pylon shaft).
+
+Resolution, per the client's direction:
+
+- The pier columns are GONE — budget zeroed with a guard against the
+  one-particle-per-pier floor. Nothing stands under the approaches.
+- The bridge's only supports are the TOWERS' OWN LEGS, made realistic:
+  each leg is now three parallel filaments (a solid luminous column with
+  actual width instead of a hairline) running unbroken from the ground
+  to past the cable saddle, and the below-deck particle pylon follows
+  the two legs at ±legSpacing/2 instead of pooling into a central blob.
+
+Verified by capture: under the deck only the towers' slim leg pairs
+reach the ground, matching the reference's clean architectural pylons.
+
+---
+
+## Round 10: the towers become real columns (2026-08-03)
+
+The client sent a close-up reference of the tower and asked for the same
+realism. Read from the image: a leg is a SOLID tapering column expressed
+through its edges — two bright converging outlines with a soft luminous
+fill between them — not a bundle of hairlines.
+
+Implemented in both bodies at once: the filament legs became two bright
+tapered edge lines (half-width 3.6 at the ground, 1.9 at the top) with a
+dim core line between; the particle legs became the glowing FILL inside
+those edges, tapering with them and given along-span depth; the pylon
+continuation below the deck fills the same width; and the portal braces
+became box sections drawn by their top and bottom edges. Verified by
+capture: solid luminous masts with engineering taper, matching the
+close-up reference.
+
+---
+
+## Round 11: the architecture redesign (2026-08-04)
+
+The client came back with a complete structural philosophy — notably
+re-embracing, in their own detailed words, the direction rejected in
+rounds 7-8, but with one decisive difference: the towers must be REAL.
+
+The bridge is now a three-tier hierarchy:
+
+1. **Real objects** — only the two tower pairs. A new towerStructures.ts
+   renders them as opaque, depth-writing meshes: tapered box-section legs
+   rising from the terrain past the cable saddles, tied by box portal
+   beams, in a custom material that keeps the scene's grammar (near-black
+   body, saturated green fresnel rim concentrating toward the saddle, the
+   terrain's own fog law). They grow out of the ground when the
+   construction front reaches them and shrink back during the rewind —
+   pure functions of the clock, like everything else.
+2. **Semi-physical** — the suspension. The particle system now generates
+   ONLY the cable drapes (tightened to a 0.12 scatter — threads of
+   aligned points) and the hanger curtain. The budget under-spends
+   nominal deliberately; the population shrank to what the suspension
+   needs.
+3. **Pure energy** — the roadway does not exist. bridgeFibers.ts was
+   deleted outright; the road is the flowing river of packets alone:
+   lanes abolished for a triangular distribution with slow per-packet
+   wander, wide speed variance, depth inside the flow, dissolving edges,
+   and a density arc that is born sparse at the viewer, peaks at the
+   towers and dissolves into the mountains past the far tower — no hard
+   endpoint, per the brief.
+
+Verified by capture: solid dark masts with green edge light anchoring a
+suspension of delicate particle curves over a roadway that is nothing
+but flow.
+
+---
+
+## Round 12: the tower blueprint (2026-08-04)
+
+The client sent an engineering sheet — "Bridge Main Towers Design
+Breakdown" — with front/side/top views, cross-sections, a foundation
+detail and four close-ups, and asked for faithful recreation, not
+reinterpretation. Decisions extracted from it and rebuilt into
+towerStructures.ts:
+
+- Legs are DEEPER than wide (blueprint cross-section 6.5 × 12 m at 120 m
+  height), the depth halving toward the top; both extents taper through
+  a two-segment loft so the mast eases rather than cones.
+- The portal CONVERGES toward the top (24 → 18 m in the sheet). Ours
+  runs 80 → 70 — chosen so the leg centres land exactly on the
+  main-cable line at ±35: the cable rides its saddle and the anchorage
+  reads as genuine load transfer.
+- No sharp box corners anywhere: every member is a chamfered prism, and
+  a per-vertex aEdge attribute puts the green light ONLY on the bevel
+  facets — the sheet's "glowing accents on edges and key lines", never
+  a full outline. (The first attempt scaled edge light by camera-facing
+  and turned the crossbeam into a glowing billboard; the fix was a
+  whisper-level seam tag and a darker body everywhere.)
+- ONE massive structural crossbeam with the close-up's arched underside
+  (an extruded shape), plus a slab-level deck tie derived from deckY.
+- A widened foundation pedestal continues below the terrain — most of
+  the tower exists underground, the landscape wraps it.
+- Cable-saddle caps sit slightly proud at the top as the brightest
+  pieces, where the particles' energy would naturally accumulate.
+
+Verified by capture: dark monumental masts with seam-light accents,
+believable saddle-to-cable anchorage, one arched beam, buried feet.
+
+---
+
+## Round 13: the art-direction revision (2026-08-04)
+
+Three mandatory changes, delivered together:
+
+1. **The orb is gone — from the code, not just the screen.** The
+   particle choreography no longer contains a join, a ride or a deposit:
+   each particle lifts off its own patch of ground a few seconds before
+   its seat time and SPIRALS directly into its place in the structure —
+   a bézier lifted along the terrain normal, wound with a helix whose
+   radius is zero at both ends, so a flight begins as a lift-off and
+   ends as construction with no intermediate shape ever existing.
+   Thousands of these staggered by the seating schedule read exactly as
+   briefed: the entire world deciding to build the bridge. (A stale
+   reference to the removed rising-state in the cursor-avoidance block
+   briefly killed the whole particle draw with a shader VALIDATE
+   failure — cleaned.)
+2. **The towers joined the environment.** Same geometry, new language:
+   glow vector cut to a saturated cool green, fresnel and seam lights
+   halved, face glow whispered. The masts now read as dark silhouettes
+   the landscape produced, legible only through edge light.
+3. **The bridge became a journey.** The centreline gained a seventh
+   point at each concern: the near end now starts BEHIND the camera, so
+   the roadway passes beneath the viewer and out of the bottom of the
+   frame; the far end runs 340 units past the old exit while sinking,
+   so it drops into the fog behind the mountain silhouettes with no
+   visible endpoint. Interior anchors kept their world positions; only
+   the arc-length normalisation moved (towers at u .457/.683, arc 2280).
+
+Captures confirm all three: a build with no orb anywhere, towers that
+belong to the world, and a road that arrives from behind you and leaves
+for somewhere you cannot see.
+
+---
+
+## Round 14: the landscape deck and the graphite towers (2026-08-04)
+
+Two refinements to reach the reference's quality bar, no redesign:
+
+**The deck became a landscape.** The particle river gained a width field:
+underfoot it fans to ~2.6× the span width — monumental, wide enough to
+stand on, spilling across the valley floor — and funnels down to the
+tower portal by the main mast, so the far half stays narrow only through
+perspective. Packet counts rose ×1.6 to keep the density worthy of the
+area; the flow gained a second, faster wander octave (micro-turbulence),
+a ±2u vertical layer spread with per-packet oscillation, and a slow
+spatial clumping field that breaks the surface into drifts, pools and
+small gaps. The edges dissolve against the LOCAL width — density is the
+only border. Everything remains particles; there is no plane, no mesh,
+no faked width anywhere.
+
+**The towers became graphite.** Every green term in the tower material
+is now gated by how much a surface faces the sky's glow bank — the same
+direction the terrain's distant rims use — so green reads as REFLECTED
+environmental light, never emission; faces turned away stay black. A
+neutral cool sheen carries the matte-composite feel, thin horizontal
+panel seams mark the segmental construction on lit faces only, the legs
+thickened ~15% for mass (height and portal untouched), and each saddle
+gained reinforced cable-entry housings on both span faces, where the
+suspension physically locks into the mast.

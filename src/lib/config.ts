@@ -490,16 +490,28 @@ export const BRIDGE = {
      * _camsolve.mjs, that walks the eye directly up to the towers. The Y
      * profile is unchanged: low near, high at the towers, sinking exit.
      */
-    { u: 0.0, p: [158, 36, 920] },
-    { u: 0.17, p: [170, 44, 660] },
-    { u: 0.33, p: [152, 55, 390] },
-    { u: 0.505, p: [320, 80, 70] }, // MAIN TOWER base
-    { u: 0.79, p: [620, 84, -340] }, // FAR TOWER base
-    { u: 1.0, p: [900, 62, -590] },
+    /**
+     * EXTENDED BOTH WAYS (client, 2026-08-04 art-direction revision: "the
+     * bridge must connect two distant worlds"). The near end now starts
+     * BEHIND the camera (z 1060 vs the eye at 980), so the roadway passes
+     * beneath the viewer and out of frame — a journey you are already on.
+     * The far end runs 340u past the old exit and SINKS (y 62 → 44) as it
+     * goes, so it drops behind the mountain silhouettes inside the fog and
+     * dissolves with no visible endpoint. Interior anchors — the S-curve
+     * elbow and both tower bases — are the same world points as before;
+     * only their normalised u moved with the longer arc.
+     */
+    { u: 0.0, p: [150, 34, 1060] },
+    { u: 0.124, p: [158, 40, 780] },
+    { u: 0.297, p: [152, 55, 390] },
+    { u: 0.457, p: [320, 80, 70] }, // MAIN TOWER base
+    { u: 0.683, p: [620, 84, -340] }, // FAR TOWER base
+    { u: 0.849, p: [900, 62, -590] },
+    { u: 1.0, p: [1140, 44, -830] },
   ],
 
   /** Derived at init from the arc-length table. Recompute if points change. */
-  arcLength: 1782,
+  arcLength: 2280,
 
   /** WIDENED 46 → 74 (client, 2026-08-03 round 2: "the bridge in the image
    *  is WIDER — make it exactly like the image"), and KEPT wide through the
@@ -516,24 +528,15 @@ export const BRIDGE = {
   deckCamber: 0.5,
 
   /**
-   * The roadway weave's lane lattice (pass 2). The continuous GL filaments
-   * in bridgeFibers draw this many lanes; the particle system's dust rows
-   * SNAP ONTO the same lattice so the two families interleave as one woven
-   * material instead of two mismatched line patterns beating against each
-   * other.
-   */
-  fiberLanes: 34,
-
-  /**
    * The bridge is not uniformly a suspension bridge. The near and far ends
    * have no main cable — which is exactly what the reference frame shows in
    * the foreground: a long cable-free sweep of glowing deck. The side-span
    * cables (tower top → deck-level anchorage) cover part of the approaches.
    */
   sections: {
-    nearApproach: [0.0, 0.505],
-    mainSpan: [0.505, 0.79],
-    farApproach: [0.79, 1.0],
+    nearApproach: [0.0, 0.457],
+    mainSpan: [0.457, 0.683],
+    farApproach: [0.683, 1.0],
   },
 
   /**
@@ -545,25 +548,50 @@ export const BRIDGE = {
    * thinner lines. legSpacing is NOT slimmed: it is the portal the 74-wide
    * deck passes through and must exceed the deck width.
    */
+  /**
+   * REBUILT AGAINST THE DESIGN-BREAKDOWN SHEET (client, 2026-08-04).
+   * Blueprint ratios, mapped to our world scale:
+   *   - legs are DEEPER than wide (cross-section 6.5 × 12 m at 120 m
+   *     height → width ≈ 5.4%, depth ≈ 10% of height), depth halving
+   *     toward the top (side view 12 → 6.5)
+   *   - the portal CONVERGES toward the top (front view 24 → 18 m). Ours
+   *     converges from the deck-constrained 80 down to topPortal 70, so
+   *     the leg centres land exactly on the main-cable line (±35) — the
+   *     saddle sits under the cable, which is what makes the anchorage
+   *     believable
+   *   - ONE massive crossbeam with an arched underside high on the mast
+   *     (beamY), plus a deck-level connection derived from deckY(u)
+   *   - a widened foundation pedestal continuing below the terrain
+   * Consumed exclusively by towerStructures.ts (real geometry).
+   */
   towers: {
     main: {
-      u: 0.505,
+      u: 0.457,
       baseY: 80,
       height: 192, // saddle at Y = 272
       /** Just outside the widened deck (74) — a portal the road passes through. */
       legSpacing: 80,
-      legTaper: 0.52,
-      crossBraceY: [130, 192, 254],
+      topPortal: 70,
+      /** Leg cross-section half-extents [across portal, along span] —
+       *  THICKENED (2026-08-04 refinement: "the towers must appear
+       *  heavier... believable that they could support thousands of
+       *  tons") without touching height or portal proportions. */
+      legBase: [6.2, 11.5] as const,
+      legTop: [5.0, 6.2] as const,
+      /** The structural crossbeam's centre height (world Y). */
+      beamY: 230,
     },
     far: {
-      u: 0.79,
+      u: 0.683,
       baseY: 84,
       height: 114, // saddle at Y = 198
       /** Same deck passes through this portal too — the far pylon is squat
        *  and wide in world space; perspective slims it on screen. */
       legSpacing: 78,
-      legTaper: 0.56,
-      crossBraceY: [128, 172],
+      topPortal: 70,
+      legBase: [4.4, 7.8] as const,
+      legTop: [3.5, 4.4] as const,
+      beamY: 172,
     },
   },
 
@@ -628,24 +656,33 @@ export const BRIDGE = {
   },
 
   /**
-   * How the particle budget is divided.
-   *
-   * Deliberately NOT proportional to surface area — particle count buys
-   * legibility of THIN things. Round-4 rebalance: the deck takes the largest
-   * share because its fiber lines must read as CONTINUOUS filaments (density
-   * along each line is what closes them into unbroken light); every slimmed
-   * member (towers, piers, hangers) needs LESS budget for MORE intensity,
-   * because the same particles condense into a thinner line.
+   * COMPLETE ARCHITECTURE REDESIGN (client, 2026-08-04): "only the two main
+   * tower pairs should exist as true physical structures... everything else
+   * should be generated through particles... the roadway should not exist —
+   * there is only an invisible spline." Towers moved OUT of the particle
+   * system entirely (real geometry — see towerStructures.ts); the deck,
+   * railing and piers no longer generate ANY particles at all — the
+   * roadway's only visual representation is the flowing river in
+   * groundStreams.ts, which IS the invisible-spline-plus-density illusion
+   * the brief describes. The whole particle budget belongs to the two
+   * "semi-physical" elements: the delicate cable drapes and the hanger
+   * curtain that visibly connects them to the (invisible) roadway.
+   */
+  /**
+   * NOTE the shares no longer sum to 1 — that is the point. The particle
+   * count is DERIVED from the targets that survive generation, so spending
+   * only 36% of the nominal budget simply yields a smaller, finer particle
+   * population: cables at ~today's density (delicate lines, not ropes) and
+   * nothing wasted on layers that no longer exist. The dedup-shortfall
+   * fallback that used to refill the deck is gone with the deck itself.
    */
   targetDistribution: {
-    deck: 0.38,
-    /** +2 points with the 7 → 6 spacing (Pass 1): a denser curtain must
-     *  not come out of each thread's own continuity. */
-    hangers: 0.12,
-    mainCables: 0.18,
-    towers: 0.17,
-    piers: 0.07,
-    railing: 0.08,
+    deck: 0,
+    hangers: 0.14,
+    mainCables: 0.22,
+    towers: 0,
+    piers: 0,
+    railing: 0,
   },
 } as const;
 
@@ -659,6 +696,29 @@ export const LAYERS = [
 ] as const;
 
 export type Layer = (typeof LAYERS)[number];
+
+/**
+ * THE TOWERS' MATERIAL (2026-08-04 architecture redesign). Real opaque
+ * geometry — the bridge's only solid object — read through the same visual
+ * grammar as everything else: a near-black body (matching terrain's
+ * uBase/uAmbient darkness, so the towers sit IN the scene's palette rather
+ * than floating outside it) with an emissive rim that concentrates toward
+ * the saddle, where the cables converge and the energy is highest.
+ */
+export const TOWER_GLOW = {
+  base: "#040f08",
+  /** Deliberately > 1 in the green channel — an opaque mesh does not stack
+   *  toward white under additive blending the way particles do. Red/blue
+   *  held LOW (saturated green, never warm/yellow), and the whole vector
+   *  TEMPERED for the 2026-08-04 art-direction pass: the towers must
+   *  almost disappear into the environment, readable only through subtle
+   *  edge light — part of the world's ecosystem, not an object in it. */
+  glow: [0.2, 1.0, 0.28] as const,
+  rimPower: 2.6,
+  /** Base→top brightness mix — "the towers are anchors, energy concentrates
+   *  toward the point cables meet the mast". */
+  verticalFloor: 0.22,
+} as const;
 
 // ---------------------------------------------------------------------------
 // TERRAIN — the valley

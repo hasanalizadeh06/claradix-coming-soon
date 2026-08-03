@@ -9,12 +9,13 @@ import * as THREE from "three";
 
 // --- candidate world (edit alongside config when iterating) ----------------
 const CENTRELINE = [
-  [158, 36, 920],
-  [170, 44, 660],
+  [150, 34, 1060],
+  [158, 40, 780],
   [152, 55, 390],
   [320, 80, 70], // main tower base
   [620, 84, -340], // far tower base
   [900, 62, -590],
+  [1140, 44, -830],
 ];
 const TOWER_MAIN = { p: 3, height: 192 };
 const TOWER_FAR = { p: 4, height: 114 };
