@@ -222,6 +222,25 @@ export function createBridgeScene(ctx: SceneContext): SceneHandle {
   const towers = createTowerStructures(terrain);
   scene.add(towers.group);
 
+  /**
+   * The towers join the TRAIL pass as DEPTH-ONLY occluders, exactly like
+   * the terrain (2026-08-04 correction: "the bridge must pass THROUGH the
+   * towers"). Without this, the moving packets' accumulated streaks glow
+   * straight through the mast legs — the roadway looked pasted IN FRONT
+   * of the towers even though the main pass occluded it correctly.
+   */
+  towers.group.traverse((obj) => {
+    if (!(obj instanceof THREE.Mesh)) return;
+    obj.layers.enable(TRAIL_LAYER);
+    const mat = obj.material as THREE.Material;
+    obj.onBeforeRender = (_renderer, _scene, cam) => {
+      if (!cam.layers.isEnabled(0)) mat.colorWrite = false;
+    };
+    obj.onAfterRender = () => {
+      mat.colorWrite = true;
+    };
+  });
+
   // --- camera -------------------------------------------------------------
   //
   // Placed once and held. There is NO camera animation during the intro: the

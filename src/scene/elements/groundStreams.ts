@@ -222,6 +222,16 @@ void main(){
                + wA * sin(uElapsed * TAU * wW + aHash * TAU)
                + (0.6 + 1.1 * fract(aHash * 3.7))
                  * sin(uElapsed * TAU * (0.21 + 0.2 * fract(aHash * 9.1)) + aHash * 41.0);
+
+  // THE PORTAL PINCH (2026-08-04 correction): approaching either tower,
+  // the flow narrows so every packet passes BETWEEN the mast's legs —
+  // through the portal, never through a column. The clamp releases within
+  // ~0.05u, so the river visibly funnels into the gate and fans back out.
+  float dTower = min(abs(u - ${f(BRIDGE.towers.main.u)}),
+                     abs(u - ${f(BRIDGE.towers.far.u)}));
+  float portalLim = mix(33.0, 400.0, smoothstep(0.012, 0.05, dTower));
+  across = clamp(across, -portalLim, portalLim);
+
   vec3 pos = deckP + bin * across;
 
   // DEPTH — stacked layers, not a sheet: packets ride up to ~2u above and

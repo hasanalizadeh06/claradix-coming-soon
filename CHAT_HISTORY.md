@@ -885,3 +885,30 @@ panel seams mark the segmental construction on lit faces only, the legs
 thickened ~15% for mass (height and portal untouched), and each saddle
 gained reinforced cable-entry housings on both span faces, where the
 suspension physically locks into the mast.
+
+---
+
+## Round 15: three precision corrections (2026-08-04)
+
+1. **The bridge now passes THROUGH the towers.** The road was correctly
+   occluded in the main pass all along — the giveaway was the TRAIL
+   pass: accumulated packet streaks had no tower depth to test against
+   and glowed straight through the mast legs. The towers now join the
+   trail pass as depth-only occluders (the same colorWrite trick the
+   terrain uses), and a portal pinch narrows the river to the portal
+   width within ~0.05u of each tower, so every packet funnels between
+   the legs and none passes through a column. The deck visibly enters
+   the portal, disappears behind the front leg, and emerges beyond.
+2. **The neon identity came back, engineered.** The graphite pass had
+   drained the Claradix green; the glow vector returned to full
+   saturation with the environmental gate relaxed to a floor of 0.45 —
+   lit rather than flat-emissive, but unmistakably neon. The legs gained
+   thin lofted groove strips following their own lean and taper (the
+   brief's "illuminated vertical grooves"), the panel seams brightened,
+   and the strongest camera-facing edge runs now cross the bloom
+   threshold for the subtle halo on key edges only.
+3. **Both rear legs grounded.** The pedestals had been built at the
+   tower's shared pivot height, so on sloping ground the uphill leg's
+   foot hovered. Each pedestal now rises from its own leg's terrain
+   contact and sinks 22 units deep — both feet emerge from the earth
+   with equal weight, on both towers.

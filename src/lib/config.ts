@@ -709,11 +709,13 @@ export const TOWER_GLOW = {
   base: "#040f08",
   /** Deliberately > 1 in the green channel — an opaque mesh does not stack
    *  toward white under additive blending the way particles do. Red/blue
-   *  held LOW (saturated green, never warm/yellow), and the whole vector
-   *  TEMPERED for the 2026-08-04 art-direction pass: the towers must
-   *  almost disappear into the environment, readable only through subtle
-   *  edge light — part of the world's ecosystem, not an object in it. */
-  glow: [0.2, 1.0, 0.28] as const,
+   *  held LOW: saturated CLARADIX green, never warm/yellow. Restored to
+   *  full neon identity (client, 2026-08-04: "keep the original neon-green
+   *  style — engineered, not flat") after a too-realistic graphite pass:
+   *  the towers glow the brand's green along edges, grooves and anchors,
+   *  with the strongest lines crossing the 0.62 bloom threshold for a
+   *  subtle halo on the key edges only. */
+  glow: [0.26, 1.45, 0.4] as const,
   rimPower: 2.6,
   /** Base→top brightness mix — "the towers are anchors, energy concentrates
    *  toward the point cables meet the mast". */

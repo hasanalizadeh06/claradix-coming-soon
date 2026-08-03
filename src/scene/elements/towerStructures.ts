@@ -205,38 +205,35 @@ void main(){
   vec3 viewDir = normalize(cameraPosition - vWorld);
   float dist = distance(cameraPosition, vWorld);
 
-  // MATTE GRAPHITE COMPOSITE (2026-08-04 refinement). A near-black body;
-  // the green is never emission — it is the ENVIRONMENT's light caught in
-  // reflection. Every green term below is therefore gated by how much the
-  // surface faces the sky's glow bank (the same direction the terrain's
-  // distant rims use), so a face turned away from the light stays dark no
-  // matter how it meets the camera.
+  // NEON-PREMIUM (2026-08-04 correction: the graphite pass lost the
+  // Claradix identity — "keep the neon green, make it engineered"). The
+  // body stays near-black so the LINES carry the brand: chamfer edges,
+  // vertical groove strips, panel seams and the anchor housings burn the
+  // signature green, softly shaped by the environment's light direction
+  // so the material still reads lit rather than flat-emissive.
   vec3 color = uBase;
 
-  float envFacing = 0.15 + 0.85 *
+  float envFacing = 0.45 + 0.55 *
     max(dot(n, normalize(vec3(0.35, 0.55, -0.5))), 0.0);
 
-  // Camera-grazing sheen: mostly a NEUTRAL cool graphite reflection, with
-  // the green environmental component weighted by envFacing and toward
-  // the saddle, breathing slowly on the wall clock.
   float fres = pow(1.0 - abs(dot(n, viewDir)), ${f(TOWER_GLOW.rimPower)});
   float vertical = mix(${f(TOWER_GLOW.verticalFloor)}, 1.0, vH * vH);
   float breathe = 0.9 + 0.1 * sin(uTime * 0.7 + vWorld.x * 0.01);
   color += vec3(0.012, 0.016, 0.015) * fres;
-  color += uGlow * (fres * envFacing * vertical * breathe * 0.5);
+  color += uGlow * (fres * envFacing * vertical * breathe * 0.6);
 
-  // THE CHAMFER LINES — light caught on bevels, joints and anchor plates.
-  // Gated by envFacing too: a reflected accent, never paint.
+  // THE STRUCTURAL LINES — bevels, groove strips, joints, anchor plates.
+  // aEdge selects them; the strongest, camera-facing runs cross the bloom
+  // threshold and earn the subtle halo the brief asks for.
   float facing = clamp(dot(n, viewDir), 0.0, 1.0);
   color += uGlow * (vEdge * envFacing * vertical
-                    * (0.05 + 0.3 * facing) * breathe);
+                    * (0.12 + 0.5 * facing) * breathe);
 
   // PANEL SEAMS — segmental construction: thin horizontal joints where
-  // the lifts meet, catching a whisper of the environment's green on lit
-  // faces. Understated engineering detail, not decoration.
+  // the lifts meet, lit in the brand green on lit faces.
   float band = fract(vH * 13.0);
   float seam = smoothstep(0.0, 0.018, band) * (1.0 - smoothstep(0.028, 0.05, band));
-  color += uGlow * (seam * envFacing * facing * 0.09);
+  color += uGlow * (seam * envFacing * facing * 0.16);
 
   // The terrain's fog law, so the far tower recedes into the same
   // atmosphere as the mountains behind it.
@@ -317,13 +314,18 @@ export function createTowerStructures(
       const cxTop = topCentres[i];
       const sink: GeoSink = { positions: [], normals: [], aH: [], aEdge: [] };
 
-      // --- foundation pedestal: widened, buried, heavy -------------------
-      // From 8u below the terrain to a shoulder above it — "the tower
-      // grows out of the landscape, most of it exists underground".
+      // --- foundation pedestal: PER-LEG grounding (2026-08-04 fix) ------
+      // Both towers stand on sloping ground, and a pedestal placed at the
+      // SHARED pivot height left the uphill/downhill leg visually
+      // floating (client: "one rear leg appears suspended"). Each leg's
+      // pedestal now rises from ITS OWN terrain contact, sunk 22u deep so
+      // even at grazing angles the foot visibly emerges from the earth
+      // with equal weight on both sides.
+      const gLocal = groundYs[i] - pivotY;
       loft(
         sink,
-        ring(cx, baseW * 1.8, baseD * 1.55, -8),
-        ring(cx, baseW * 1.18, baseD * 1.12, 11),
+        ring(cx, baseW * 1.8, baseD * 1.55, gLocal - 22),
+        ring(cx, baseW * 1.18, baseD * 1.12, gLocal + 11),
         0, 0.04,
         0.35,
         true,
@@ -353,6 +355,23 @@ export function createTowerStructures(
         1,
         false,
       );
+
+      // --- illuminated vertical grooves (2026-08-04 neon-premium) -------
+      // One thin light strip proud of each portal-side face and each
+      // outer face, following the leg's own lean and taper from pedestal
+      // shoulder to saddle — the "glowing structural lines" of the brief.
+      for (const side of [-1, 1]) {
+        const xB = cx + side * (baseW + 0.18);
+        const xT = cxTop + side * (topW + 0.18);
+        loft(
+          sink,
+          ring(xB, 0.16, 0.55, gLocal + 12),
+          ring(xT, 0.13, 0.4, yTop - 1.5),
+          0.2, 0.95,
+          1,
+          false,
+        );
+      }
 
       // --- the cable saddle cap: slightly proud, the brightest piece ----
       loft(
