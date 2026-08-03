@@ -912,3 +912,35 @@ suspension physically locks into the mast.
    foot hovered. Each pedestal now rises from its own leg's terrain
    contact and sinks 22 units deep — both feet emerge from the earth
    with equal weight, on both towers.
+
+---
+
+## Round 16: the pre-dawn atmosphere (2026-08-04)
+
+The client asked for the sky to stop being an effect and become a
+physically believable environment — before sunrise, silent, expensive.
+The domain-warped foundation stayed (it is what keeps procedural
+patterning invisible); everything expressive above it was rebuilt into
+five independently drifting layers:
+
+1. **The great haze** — fog that originates AT the terrain: a dark
+   emerald breath hugging the ridgelines, decaying exponentially with
+   elevation, over a blue-black pre-dawn lift. The mountains, valley and
+   sky now share one atmosphere.
+2. **Softened energy** — the fracture-vein plasma language was cut to a
+   whisper; light now ACCUMULATES softly in the thin of the haze, and a
+   vertical law keeps brightness at the horizon and in the framed
+   upper-right energy region while the top of the sky stays dark.
+   Darkness became the artistic tool the brief demanded.
+3. **Volumetric scattering** — a broad, dim softness in the air around
+   bright regions, read from the same energy field through a wider
+   window. Light bleeding into atmosphere, not bloom.
+4. **A real starfield** — temperatures (mostly cold blue-white, a few
+   subtly warm), the existing astronomical clustering, and twinkle cut
+   to near-imperceptible.
+5. **Micro drift** — a nearly invisible layer of tiny particles adrift
+   at their own slow tempo. Motion felt, never seen.
+
+Five tempos, none synchronized; every layer occluded correctly by the
+energy bodies; everything still under the bloom threshold — the sky
+never blooms, and it no longer competes with the bridge.

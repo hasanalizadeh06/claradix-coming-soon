@@ -159,6 +159,26 @@ void main() {
   vec2 uv = vNdc * 0.5 + 0.5;
   vec2 sxy = vec2(uv.x, 1.0 - uv.y);
 
+  // --- LAYER: THE GREAT HAZE (2026-08-04 sky redesign) ---------------------
+  //
+  // Atmosphere rising off the terrain — the fog does not float on its own,
+  // it ORIGINATES at the ground: densest against the ridgelines, thinning
+  // exponentially with elevation until the upper sky is essentially black.
+  // A very low-frequency field at its own (slowest) tempo keeps it from
+  // ever reading as a painted band; darkness above is the artistic tool.
+  {
+    float az = sxy.x;
+    float e = max(dir.y, 0.0);
+    vec2 t3 = vec2(uTime * ${f(SKY.nebula.driftSpeed * 0.35)},
+                   -uTime * ${f(SKY.nebula.driftSpeed * 0.22)});
+    float hz = fbm(vec2(az * 1.1, e * 2.0) + t3);
+    float ground = exp(-e * 7.0);
+    // Dark emerald breath near the terrain...
+    color += vec3(0.010, 0.026, 0.017) * (ground * (0.45 + 0.55 * hz));
+    // ...over a blue-black pre-dawn lift that carries a little higher.
+    color += vec3(0.006, 0.009, 0.014) * exp(-e * 3.0) * 0.55;
+  }
+
   // --- THE NEBULA ----------------------------------------------------------
   //
   // A volumetric deep-space plasma formation — NOT clouds, NOT fog. Four
@@ -238,15 +258,21 @@ void main() {
     float energy = pow(smoothstep(0.42, 0.78, en), 1.7);
     glowField = energy;
 
-    // Fracture veins: a ridged fold of the warped field, raised to a high
-    // power — thin cracks where concentrated plasma shows through.
+    // Ridged folds, reduced to a WHISPER (2026-08-04 sky redesign: the
+    // hard "fracture vein" plasma look was too dramatic — this is ionized
+    // atmosphere catching distant light, not deep-space plasma).
     float vein = 1.0 - abs(2.0 * fbm(P * 2.6 + 2.8 * r + vec2(9.0, 5.0)) - 1.0);
-    vein = pow(vein, 6.0);
+    vein = pow(vein, 4.0);
 
     // The translucent membrane window: emission escapes where the body is
     // present but thin-to-mid; a fully thick core occludes its own light.
     float membrane = smoothstep(0.08, 0.34, density)
                    * (1.0 - smoothstep(0.52, 0.94, density));
+
+    // VERTICAL LIGHT LAW: brightness belongs to the horizon and to the
+    // energy regions the framing selects (the reference's upper-right).
+    // Everything else fades upward into darkness.
+    float vertDamp = 0.38 + 0.62 * exp(-e * 2.1);
 
     // Occlusion FIRST — the body stands in front of space and darkens it.
     // Most of the formation stays near-black; brightness is rare.
@@ -255,17 +281,22 @@ void main() {
     // The unlit body is NEAR-BLACK GREEN, not invisible: a faint ambient
     // lift, textured by the micro field, keeps the formation's silhouette
     // legible against pure black space even where no energy stands.
-    color += vec3(0.016, 0.04, 0.024) * (density * (0.5 + 0.5 * micro));
+    color += vec3(0.014, 0.034, 0.021) * (density * (0.5 + 0.5 * micro));
 
-    // Emission: membranes lit from within + veins where energy is high +
-    // the back sheet glowing through gaps in the front (depth light).
-    // Broad membrane light is SUBORDINATE to the veins now: washes read as
-    // backlit smoke, concentrated fracture light reads as plasma. The micro
-    // multiply breaks any remaining wash into filament-scale structure.
-    float emit = energy * (membrane * 1.05 + vein * energy * 1.7)
-               + energy * backBody * (1.0 - frontBody) * 0.35;
-    emit *= 0.6 + 0.7 * micro;
+    // Emission: SOFT ACCUMULATION — light gathering in the thin of the
+    // haze, with the ridged folds only articulating it, never dominating.
+    float emit = energy * (membrane * 1.15 + vein * energy * 0.55)
+               + energy * backBody * (1.0 - frontBody) * 0.3;
+    emit *= 0.65 + 0.55 * micro;
+    emit *= vertDamp;
     emit = clamp(emit, 0.0, 1.0);
+
+    // LAYER: VOLUMETRIC SCATTERING — not bloom: a broad, dim softness in
+    // the AIR around the bright regions, from the same energy field read
+    // through a much wider window, so light bleeds into the atmosphere
+    // the way it does before sunrise.
+    float scatter = smoothstep(0.3, 0.75, en) * skyMask * vertDamp;
+    color += vec3(0.018, 0.052, 0.028) * (scatter * framing * 0.55);
 
     // The designed ramp. Deep emerald dominates; the yellow-green core is
     // reserved for the strongest energy and stays under the 0.62 bloom
@@ -332,9 +363,38 @@ void main() {
     // only has to stop stars crowding the silhouette from just above it.
     float fade = 1.0 - smoothstep(uStarFalloff.x, uStarFalloff.y, sxy.y);
 
+    // TEMPERATURE (2026-08-04 sky redesign): most stars cold white with a
+    // faint blue cast; a small fraction burn slightly warm. Astronomy,
+    // not decoration — the warmth stays subtle.
+    float temp = hash21(cell + 31.7);
+    vec3 starCol = mix(vec3(0.84, 0.92, 1.0), vec3(1.0, 0.88, 0.72),
+                       smoothstep(0.86, 0.97, temp) * 0.7);
+
     // Stars live BEHIND the clouds. This one multiply is what turns the
     // masses from painted glow into weather.
-    color += vec3(bright * core * fade) * (1.0 - cloudBody * 0.93);
+    color += starCol * (bright * core * fade) * (1.0 - cloudBody * 0.93);
+  }
+
+  // --- LAYER: MICRO DRIFT --------------------------------------------------
+  //
+  // Tiny particles adrift in the atmosphere, almost invisible — the layer
+  // between the stars and the haze that makes the sky feel inhabited by
+  // AIR rather than painted. They drift at their own slow tempo, unsynced
+  // with everything else; motion felt, never seen.
+  {
+    vec2 g2 = (sxy + vec2(uTime * 0.0017, uTime * 0.00093)) * vec2(85.0, 56.0);
+    vec2 c2 = floor(g2);
+    vec2 f2 = fract(g2);
+    float ex2 = hash21(c2 + 77.3);
+    if (ex2 < 0.055) {
+      vec2 j2 = hash22(c2 * 1.91);
+      float d2 = length((f2 - j2) * (uResolution / vec2(85.0, 56.0)));
+      float core2 = 1.0 - smoothstep(0.0, 1.0, d2);
+      float fade2 = 1.0 - smoothstep(0.35, 0.8, sxy.y);
+      color += vec3(0.042, 0.062, 0.05)
+             * (core2 * fade2 * (0.5 + 0.5 * fract(ex2 * 17.0)))
+             * (1.0 - cloudBody * 0.9);
+    }
   }
 
   // --- shooting stars ------------------------------------------------------

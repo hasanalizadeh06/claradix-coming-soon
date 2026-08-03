@@ -353,7 +353,9 @@ export const SKY = {
        * requirement actually needs.
        */
       periodRange: [3.0, 11.0] as const,
-      amplitude: 0.28,
+      /** Nearly imperceptible (2026-08-04 sky redesign) — a star that
+       *  visibly blinks reads as an indicator light, not a sun. */
+      amplitude: 0.12,
     },
   },
 
