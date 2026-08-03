@@ -4,7 +4,7 @@ import { SITE } from "@/lib/config";
 import { reveal, useUiReveal } from "@/lib/reveal";
 import { KineticHeadline } from "@/ui/KineticHeadline";
 import { Countdown } from "@/ui/Countdown";
-import { SubscribeForm } from "@/ui/SubscribeForm";
+import { WhatsAppCta } from "@/ui/WhatsAppCta";
 import { Socials } from "@/ui/Socials";
 import { SceneCanvas } from "@/ui/SceneCanvas";
 
@@ -83,7 +83,7 @@ export function App() {
             </p>
 
             <div {...at("cta")}>
-              <SubscribeForm copy={COPY} />
+              <WhatsAppCta copy={COPY} />
             </div>
 
             <Socials copy={COPY} revealed={revealed} />

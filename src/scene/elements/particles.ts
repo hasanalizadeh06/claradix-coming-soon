@@ -135,9 +135,10 @@ const PATH_SAMPLES = 256;
 
 /**
  * The construction leg: the orb hovering just above the point of the span it
- * is currently building, corkscrewing gently as it works. uFront runs 1 → 0
+ * is currently building, corkscrewing gently as it works. uFront runs 0 → 1
  * across ASSEMBLY.windowSpan — the same linear sweep `seatAtFor` encodes, so
- * the comet is always exactly over the seats being filled.
+ * the comet is always exactly over the seats being filled: it ignites at the
+ * viewer's feet and recedes toward the mountains.
  */
 function buildLegPoint(t: number, out: THREE.Vector3): THREE.Vector3 {
   const k = THREE.MathUtils.clamp(
@@ -145,7 +146,7 @@ function buildLegPoint(t: number, out: THREE.Vector3): THREE.Vector3 {
     0,
     1,
   );
-  const u = 1 - k;
+  const u = k;
   centreline.positionAt(u, out);
   const fr = centreline.frameAt(u);
   const side = fr.binormal.z >= 0 ? 1 : -1;
@@ -322,9 +323,12 @@ function buildOrbPathTexture(terrain: TerrainHandle): THREE.DataTexture {
  * That ~9:1 ratio is what makes the phase look like watching real construction
  * from a distance — a slow front advancing, with fast detail inside it.
  */
+/** REVERSED (client, 2026-08-03 round 5): the build now starts AT THE
+ *  VIEWER (u = 0) and advances toward the mountains — the front rises out
+ *  of the road underfoot and races away into the far range. */
 const seatAtFor = (u: number, layer: Layer, jitter: number) =>
   ASSEMBLY.windowStart +
-  (1 - u) * ASSEMBLY.windowSpan +
+  u * ASSEMBLY.windowSpan +
   ASSEMBLY.layerOffset[layer] +
   jitter;
 
@@ -334,8 +338,8 @@ const seatAtFor = (u: number, layer: Layer, jitter: number) =>
  * The exact inverse of `seatAtFor` in both of its orderings, and both inversions
  * carry meaning.
  *
- * SPATIALLY it runs `u` rather than `1 - u`, so the disassembly front travels
- * away from the camera while the build travelled toward it. The two fronts move
+ * SPATIALLY it runs `1 - u`, so the disassembly front travels TOWARD the
+ * camera while the build (round 5) travels away from it. The two fronts move
  * in opposite directions across the frame and are never mistaken for each other.
  *
  * STRUCTURALLY the layer offsets are their own table, top-down: railing leaves
@@ -349,7 +353,9 @@ const seatAtFor = (u: number, layer: Layer, jitter: number) =>
  * moving away, the same jitter just reads as the front losing its edge.
  */
 const rewindAtFor = (u: number, layer: Layer) =>
-  REWIND_START + u * LOOP.rewind.spatialSpan + LOOP.rewind.layerOffset[layer];
+  REWIND_START +
+  (1 - u) * LOOP.rewind.spatialSpan +
+  LOOP.rewind.layerOffset[layer];
 
 // ---------------------------------------------------------------------------
 
@@ -579,8 +585,14 @@ export function createParticles(
         Math.abs(u - uMidSpan) < 0.006;
     }
 
+    // The per-target sizeScale (fibers 0.8, micro-stars ~0.5, hanger
+    // threads 0.62…) multiplies the fractional part only — the node flag
+    // still rides the integer part, and the shader's >1.5 unpack stays
+    // valid because the scaled fraction never exceeds ~1.15.
     aSizeVar[i] =
-      rng.range(FLIGHT.sizeVar.min, FLIGHT.sizeVar.max) + (isNode ? 2 : 0);
+      rng.range(FLIGHT.sizeVar.min, FLIGHT.sizeVar.max) *
+        targets.sizeScale[src] +
+      (isNode ? 2 : 0);
     aHash[i] = hashIndex(i, 0x9e37);
 
     // A FIXED RANDOM unit vector, doing double duty: the seated breathe
@@ -920,8 +932,9 @@ void main(){
     sizeBoost = mix(${f(PARTICLES.snap.sizeMultiplier)}, 1.0,
                     clamp(since / 0.03, 0.0, 1.0));
 
-    // The completion pulse — one band travelling the bridge's length, far to
-    // near, in the same direction the build ran. Fires once, ever.
+    // The completion pulse — one band travelling the bridge's length, near
+    // to far, away from the camera in the direction the build runs. Recurs
+    // on the ten-second schedule BridgeScene drives uPulseU with.
     if (uPulseU >= 0.0) {
       float d = abs(aU - uPulseU) * ${f(centreline.arcLength)};
       brightness = mix(brightness, 1.0, 1.0 - smoothstep(0.0, 190.0, d));
@@ -976,6 +989,13 @@ void main(){
                      smoothstep(0.0, 0.3, e));
     brightness = mix(brightness, ${f(ORB.ridingBrightness)},
                      smoothstep(0.55, 1.0, e));
+
+    // NO-LOOP: the gathering is not part of the story — the page opens with
+    // the orb already holding the bridge. With the build now starting at the
+    // viewer (round 5), the cross-country boarding flights converge THROUGH
+    // the camera and blanket the frame; they fly dark instead, and a
+    // particle first APPEARS inside the comet's own glow.
+    brightness *= uLoop;
 
   } else {
     // --- RIDING THE ORB / THE DEPOSIT ------------------------------------
@@ -1080,6 +1100,24 @@ void main(){
   vec4 viewPos = viewMatrix * vec4(pos, 1.0);
   float viewDist = -viewPos.z;
 
+  // NEAR FADE. The camera stands ON the road now: without this, the deck
+  // underfoot renders as a wall of 9px additive sprites and the whole
+  // bottom of frame floods yellow-white. The reference's near road is
+  // luminous LINES, not a furnace — light within arm's reach steps aside.
+  // Tightened for the camera-correction round: the eye now stands 26u over
+  // the road with the near fan 68u out — the old 40–220 window blacked out
+  // the very foreground the directive wants as LEADING LINES. Only what is
+  // within arm's reach steps aside now.
+  brightness *= smoothstep(20.0, 90.0, viewDist);
+
+  // MID ATTENUATION. The ramp span stacks road deck, rails, and traffic
+  // lanes in one screen column; at full strength the additive sum
+  // saturates past green into a flat yellow slab. The far edge reaches to
+  // 820u (round 4) so the main-span crest — seen nearly edge-on, the
+  // worst stacking angle — also keeps green structure instead of blowing
+  // to a white band.
+  brightness *= mix(0.65, 1.0, smoothstep(200.0, 700.0, viewDist));
+
   vBrightness = clamp(brightness, 0.0, 1.0);
   vFog = clamp((viewDist - ${f(WORLD.fogNear)}) /
                ${f(WORLD.fogFar - WORLD.fogNear)}, 0.0, 1.0);
@@ -1115,7 +1153,7 @@ void main(){
     mix(${f(PARTICLES.sizePx.min)}, ${f(PARTICLES.sizePx.max)}, vBrightness)
       * sizeVar * sizeBoost * uPointScale
       * (${f(PARTICLES.sizeAttenuation)} / max(viewDist, 1.0)),
-    0.6, 14.0);
+    0.6, 7.0);
 }
 `;
 }
@@ -1132,8 +1170,14 @@ void main(){
   // Procedural round sprite, no texture. One fetch per particle per frame is
   // real bandwidth for a shape that is four lines of maths, and the procedural
   // version stays crisp at any gl_PointSize.
+  //
+  // The falloff window is NARROW on purpose (round 4: "microscopic stars,
+  // not blurry glowing dots") — a wide smoothstep gives every point a soft
+  // skirt, and 140k soft skirts are exactly the fuzzy particle cloud the
+  // redesign removes. The hard edge is the sharpness; any glow the scene
+  // still has must come from bloom crossing, never from the sprite.
   float d = length(gl_PointCoord - vec2(0.5));
-  float alpha = 1.0 - smoothstep(0.24, 0.5, d);
+  float alpha = 1.0 - smoothstep(0.32, 0.48, d);
 
   // The discard matters. A point sprite is a square and the visible dot is a
   // circle; without this the transparent corners — about 36% of the quad — still

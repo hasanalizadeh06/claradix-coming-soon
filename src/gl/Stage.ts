@@ -174,6 +174,16 @@ export class Stage {
   // before we give up smoothness.
   private slowFrameSeconds = 0;
   private degraded = false;
+  /**
+   * Capture harnesses set this (dev-only __perfFreeze) so the ladder never
+   * runs during a measurement. Under SwiftShader every frame is a "bad"
+   * frame, so a long capture session degrades several rungs deep — and the
+   * histogram checks then measure the LADDER's output, not the design's.
+   * The palette targets exist to catch design drift; a target based on how
+   * far a software rasteriser happened to degrade is a target based on the
+   * measuring machine's speed.
+   */
+  private governorFrozen = false;
 
   constructor(options: StageOptions) {
     this.container = options.container;
@@ -419,7 +429,7 @@ export class Stage {
     // exists so a tab left in the background does not teleport the animation
     // when it wakes; feeding it here would hide exactly the long frames the
     // governor is looking for.
-    this.governor.sample(frame.raw * 1000, frame.phase);
+    if (!this.governorFrozen) this.governor.sample(frame.raw * 1000, frame.phase);
 
     if (this.fade < 1) {
       this.fade = Math.min(1, this.fade + frame.delta / INTRO_FADE_SECONDS);
@@ -458,8 +468,14 @@ export class Stage {
       const dev = window as unknown as {
         __perf?: unknown;
         __perfStress?: (frameMs: number, windows: number, phase: number) => unknown;
+        __perfFreeze?: (on: boolean) => void;
       };
       dev.__perf = { ...this.governor.state(), pixelRatio: this.pixelRatio };
+      // Capture harnesses only. Freezes REAL sampling; __perfStress still
+      // drives the governor directly, so perf-check keeps working frozen.
+      dev.__perfFreeze = (on) => {
+        this.governorFrozen = on;
+      };
       dev.__perfStress = (frameMs, windows, phase) => {
         const total = PERF.sampleFrames * windows;
         for (let i = 0; i < total; i++) {

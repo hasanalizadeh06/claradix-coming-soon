@@ -2,7 +2,7 @@
 import { chromium } from "playwright";
 import { mkdirSync } from "node:fs";
 
-const BASE = "http://localhost:5199";
+const BASE = process.env.BASE ?? "http://localhost:5199";
 const OUT = process.env.OUT ?? "shots/probe";
 const TIMES = (process.env.TIMES ?? "16").split(",").map(Number);
 mkdirSync(OUT, { recursive: true });
@@ -31,9 +31,22 @@ if (process.env.NO_TRAILS) {
   console.log("trails disabled for shape captures");
 }
 
+// HIDE="particles,streams" — isolate elements via the __scene toggles.
+if (process.env.HIDE) {
+  await page.evaluate((list) => {
+    for (const el of list.split(",")) window.__scene?.[el]?.(false);
+  }, process.env.HIDE);
+  console.log("hidden: " + process.env.HIDE);
+}
+
+const WAIT_MS = Number(process.env.WAIT_MS ?? 500);
+if (process.env.SHOW_PERF) {
+  const perf = await page.evaluate(() => window.__perf);
+  console.log("PERF STATE:", JSON.stringify(perf));
+}
 for (const t of TIMES) {
   await page.evaluate((tt) => window.__claradixSeek?.(tt), t);
-  await page.waitForTimeout(500);
+  await page.waitForTimeout(WAIT_MS);
   await page.screenshot({ path: `${OUT}/t${String(t).replace(".", "_")}.png` });
   console.log(`captured t=${t}`);
 }

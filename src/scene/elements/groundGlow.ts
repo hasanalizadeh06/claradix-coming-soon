@@ -19,7 +19,7 @@
  * The schedule is inverted analytically from the same formula that generates
  * every particle's seat time:
  *
- *     seatAt(u) = windowStart + (1 - u) * windowSpan
+ *     seatAt(u) = windowStart + u * windowSpan
  *
  * so the shader needs one line and no per-frame work on the CPU. Layer offsets
  * and jitter are ignored on purpose — this is a soft pool of light, and it
@@ -97,7 +97,7 @@ varying vec3  vWorld;
 void main() {
   // Local completion, inverted from the seating schedule. 0.9s of ramp so the
   // light arrives just behind the front rather than switching on with it.
-  float seatAt = uWindowStart + (1.0 - vU) * uWindowSpan;
+  float seatAt = uWindowStart + vU * uWindowSpan;
   float complete = smoothstep(0.0, 0.9, uTime - seatAt);
 
   // ...and taken away again by the rewind, following the same front that is

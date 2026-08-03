@@ -56,8 +56,11 @@ const COUNT_BY_TIER: Record<Tier, number> = {
   minimal: 800,
 };
 
-/** Lateral lane offsets across the deck, world units. Four lanes. */
-const LANES = [-12, -4.5, 4.5, 12] as const;
+/** Lateral lane offsets across the widened (74u) deck, world units. Six
+ *  lanes — the reference's highway is a broad ribbon of parallel streaks,
+ *  not a tight four-lane thread. Railing sits at ±36.5; outermost lane at
+ *  ±30 keeps jittered packets inside the roadway. */
+const LANES = [-30, -18, -6, 6, 18, 30] as const;
 
 const GROUND_SAMPLES = 256;
 
@@ -137,7 +140,9 @@ export function createGroundStreams(
     // u per second. A full crossing takes 11–25s — deliberate, unhurried
     // packets, all travelling the SAME direction on the same route.
     aSpeed[i] = rng.range(0.04, 0.09);
-    aLane[i] = LANES[rng.int(LANES.length)] + rng.jitter(1.6);
+    // Jitter 1.6 → 0.5 (round 4): the packets ride IN the fiber weave, so a
+    // loose lane reads as noise against the perfectly parallel lines.
+    aLane[i] = LANES[rng.int(LANES.length)] + rng.jitter(0.5);
     aHash[i] = rng.next();
   }
 
@@ -195,16 +200,17 @@ void main(){
   // --- existence: the deck's own schedule ------------------------------
   // Traffic appears only once the deck at this u has been laid...
   float seatAt = ${f(ASSEMBLY.windowStart + ASSEMBLY.layerOffset.deck)}
-               + (1.0 - u) * ${f(ASSEMBLY.windowSpan)};
+               + u * ${f(ASSEMBLY.windowSpan)};
   float born = smoothstep(seatAt + 0.4, seatAt + 1.8, t);
 
   // ...and FALLS the moment the black hole takes that section. The front
-  // sweeps u ascending; one fixed-point pass freezes the packet's u at the
-  // instant the front crossed it (the error term is (speed x span)^2 — dust).
+  // sweeps u DESCENDING (round 5: opposite to the build, which now travels
+  // away from the camera); one fixed-point pass freezes the packet's u at
+  // the instant the front crossed it (error term (speed x span)^2 — dust).
   float rewindBase = ${f(REWIND_START + LOOP.rewind.layerOffset.deck)};
   float span = ${f(LOOP.rewind.spatialSpan)};
-  float uF = fract(aS0 + aSpeed * (uElapsed + (rewindBase + u * span) - t));
-  float fallAt = rewindBase + uF * span;
+  float uF = fract(aS0 + aSpeed * (uElapsed + (rewindBase + (1.0 - u) * span) - t));
+  float fallAt = rewindBase + (1.0 - uF) * span;
 
   float brightness = 0.72 + 0.28 * sin(uElapsed * TAU * (0.16 + aHash * 0.22) + aHash * TAU);
 
@@ -246,17 +252,26 @@ void main(){
   }
   brightness *= uIntensity;
 
-  vBrightness = clamp(brightness, 0.0, 1.0);
-
   vec4 viewPos = viewMatrix * vec4(pos, 1.0);
   float viewDist = -viewPos.z;
+
+  // Near fade — the lanes pass directly under the camera now, and packets
+  // within arm's reach otherwise flood the frame bottom.
+  brightness *= smoothstep(25.0, 110.0, viewDist);
+
+  // Mid attenuation — same curve as the bridge particles: the ramp column
+  // additively saturates to yellow without it, and the two systems must
+  // agree or the traffic reads brighter than the road it rides.
+  brightness *= mix(0.65, 1.0, smoothstep(200.0, 700.0, viewDist));
+
+  vBrightness = clamp(brightness, 0.0, 1.0);
   vFog = clamp((viewDist - ${f(WORLD.fogNear)}) /
                ${f(WORLD.fogFar - WORLD.fogNear)}, 0.0, 1.0);
 
   gl_Position = projectionMatrix * viewPos;
   gl_PointSize = clamp(
-    mix(1.4, 3.2, vBrightness) * uPointScale * (950.0 / max(viewDist, 1.0)),
-    0.7, 6.0);
+    mix(1.2, 2.6, vBrightness) * uPointScale * (950.0 / max(viewDist, 1.0)),
+    0.7, 2.8);
 }
 `,
     fragmentShader: /* glsl */ `
@@ -268,8 +283,11 @@ varying float vBrightness;
 varying float vFog;
 
 void main(){
+  // Same hard-edged falloff as the bridge particles (round 4) — the moving
+  // packets are the light travelling INSIDE the fibers, so they share the
+  // fibers' razor edge.
   float d = length(gl_PointCoord - vec2(0.5));
-  float alpha = 1.0 - smoothstep(0.24, 0.5, d);
+  float alpha = 1.0 - smoothstep(0.32, 0.48, d);
   if (alpha <= 0.001) discard;
 
   vec3 color = texture2D(uRamp, vec2(vBrightness, 0.5)).rgb;

@@ -22,7 +22,11 @@ export const SITE = {
   url: "https://claradix.com",
   email: "info@claradix.com",
   phone: "+994 50 443 19 29",
-  whatsapp: "https://api.whatsapp.com/send?phone=994702001019",
+  /** One tap → WhatsApp chat with the message already written (client,
+   *  2026-08-03). The number and text are the CTA's entire contract. */
+  whatsapp: `https://wa.me/994515760410?text=${encodeURIComponent(
+    "Salam. Əlaqə nömrənizi https://claradix.com veb saytından aldım, zəhmət olmasa boş zamanınızda geri dönüş edərsiniz",
+  )}`,
   address: {
     street: "Babək prospekti, Babək plaza 14C",
     locality: "Baku",
@@ -216,8 +220,9 @@ export const WORLD = {
    */
   mist: {
     /** Terrain height at which the mist has fully thinned out. Above this you
-     *  are on a ridge and there is nothing pooling. */
-    ceiling: 58,
+     *  are on a ridge and there is nothing pooling. Lowered so only genuine
+     *  hollows pool — not the entire pressed foreground plain. */
+    ceiling: 38,
     /** Below this it is uniformly thick — the bottom of the carved chasm. */
     floor: -130,
     /**
@@ -237,7 +242,10 @@ export const WORLD = {
      * many more increments than anyone wants to sit through.
      */
     color: "#14251c",
-    opacity: 0.62,
+    /** Down from 0.62 with the on-road camera: the foreground press put ALL
+     *  near ground under the mist ceiling, and the pooled mist became a
+     *  green blanket over land the reference keeps near-black. */
+    opacity: 0.3,
     /** Two octaves, drifting. Slow enough to never read as motion; present so
      *  that no two frames are identical, which is what reads as air. */
     driftSpeed: 0.9,
@@ -314,12 +322,23 @@ export const SKY = {
   zenithIsDarkerThanPage: true,
 
   stars: {
-    /** One star per ~1750px of a 1536x1024 frame. Texture in the dark, not a
-     *  starfield — a visible constellation would imply somewhere specific. */
-    count: 900,
-    sizePx: { min: 0.7, max: 1.6 },
-    /** Max 0.34, comfortably under the 0.62 bloom threshold. */
-    brightness: { min: 0.1, max: 0.34 },
+    /** Denser and brighter (client, 2026-08-03: "the stars must read
+     *  clearly") — the cloud bodies now occlude them, so the open gaps can
+     *  afford a fuller field without the sky ever reading busy. */
+    count: 1700,
+    sizePx: { min: 0.7, max: 1.9 },
+    /** Max 0.42, still under the 0.62 bloom threshold. */
+    brightness: { min: 0.1, max: 0.42 },
+    /**
+     * Star FIELDS (client, 2026-08-03 round 2: "density in some regions,
+     * some stars brighter — detailed, not uniform dots"). A large-scale
+     * noise multiplies the existence probability, so the sky has dense
+     * drifts and near-empty pools; and a rare fraction of stars burn
+     * half again brighter and larger. The post-twinkle cap keeps even
+     * those under the bloom threshold.
+     */
+    cluster: { scale: 0.13, min: 0.4, max: 2.0 },
+    brightStar: { fraction: 0.035, boost: 1.5, sizeBoost: 1.35, cap: 0.58 },
     /** Thinned toward the ridgeline, where atmospheric extinction is greatest
      *  and where they would otherwise compete with the terrain silhouette. */
     falloffStart: 0.42,
@@ -339,61 +358,56 @@ export const SKY = {
   },
 
   /**
-   * The only part of the frame with colour, and the reason the far tower reads
-   * at all despite being 61% fogged — it resolves against a faintly luminous
-   * field instead of against pure black.
+   * THE CLOUDSCAPE (client, 2026-08-03: "the sky must be EXACTLY like the
+   * reference — clouds near and far, small clouds, green glows between
+   * them, stars clearly visible"). Replaces both the old flat nebula wash
+   * and the aurora ribbon.
    *
-   * Upper right, diagonally opposite the headline block. The frame's two soft
-   * masses are opposed and the countdown ring sits between them.
+   * Three cooperating layers, all derived from one noise field so they stay
+   * physically coherent:
+   *   bodies — dark sculptural masses that OCCLUDE the stars (a cloud is a
+   *            thing in front of the sky, not a glow painted onto it)
+   *   cores  — internal green light in the thick of the masses, the
+   *            "lit from within" the reference frame shows
+   *   rims   — thin bright edges where a mass meets open sky
+   * Plus small high-frequency puffs near the horizon: the depth cue the
+   * client called out — distance is read from cloud SIZE.
+   *
+   * Everything stays under the 0.62 bloom threshold. The sky never blooms.
+   */
+  /**
+   * THE NEBULA (client, 2026-08-03 round 3). Not clouds, not fog, not
+   * smoke — a volumetric deep-space plasma formation. The full design
+   * lives in the sky shader; what it builds:
+   *
+   *   - DOUBLE DOMAIN-WARPED fractal fields — coordinates bent through
+   *     two nested fbm warps, so nothing reads as Perlin patterning;
+   *     edges tear into filaments and folded membranes instead of ending
+   *     in cloud-like outlines
+   *   - TWO stacked translucent sheets (coarse back, fine front) — the
+   *     front's thin regions reveal the back, which is what makes the
+   *     formation read as deep rather than painted
+   *   - MICRO-DETAIL field shredding every silhouette at high frequency
+   *   - an internal ENERGY field: light originates INSIDE the body and
+   *     escapes only through translucent membranes and ridged fracture
+   *     VEINS — thick cores occlude their own light, there are no rims,
+   *     no edge glow, no bloom (the sky never blooms; the brightest
+   *     yellow-green core stays under the 0.62 threshold)
+   *   - a center-open FRAMING mask: formations wrap the frame's edges
+   *     and corners and leave negative space over the bridge
+   *
+   * The palette ramp (near-black green → deep emerald → forest → toxic
+   * green → electric lime → yellow-green core) is embedded in the shader
+   * as constants — it is a designed ramp, not a tunable.
    */
   nebula: {
-    /** Widened to the WHOLE sky band (second reference image: sculptural
-     *  lit cloud masses left AND upper-right; the noise's own patchiness
-     *  separates them into banks). */
-    extent: { x: [0.0, 1.0] as const, y: [0.0, 0.5] as const },
-    color: "#2a520e",
-    peakOpacity: 0.44,
-    octaves: [
-      [1.0, 1.0],
-      [2.3, 0.46],
-      [5.1, 0.19],
-    ] as ReadonlyArray<readonly [number, number]>,
-    drift: {
-      /**
-       * About 0.7 world units across the whole of Phase 0 — imperceptible, and
-       * meant to be. Its job is not to be seen moving. Its job is that no two
-       * frames are identical, which the eye detects even when it cannot name it.
-       * A perfectly static sky reads as a photograph.
-       */
-      speed: 0.6,
-      direction: [0.82, -0.56] as const,
-      /** The internal structure evolves too, so over a long session the shape
-       *  genuinely changes rather than merely translating. */
-      turbulencePeriod: 34.0,
-    },
-  },
-
-  /**
-   * AURORA — one serpentine polar-light ribbon (client direction,
-   * 2026-08-01: "zigzag, smaller, more vivid, more alive — not a flat wash").
-   *
-   * A single narrow band zigzagging across the sky's right two-thirds, with
-   * the real aurora's anatomy: crisp bright lower edge, wispy rays feathering
-   * upward, folds travelling and striations flickering on the wall clock.
-   * Vivid green at the edge shading into teal in the rays.
-   *
-   * Peak added luminance ≈ 0.85 clamp × intensity × colour luminance ≈ 0.53 —
-   * the brightest thing in the sky, still under the 0.62 bloom threshold.
-   */
-  aurora: {
-    colorLow: "#42f08a",
-    colorHigh: "#1fc8b0",
-    intensity: 0.85,
-    /** Kept for reference by the shader's envelope; the ribbon's centre
-     *  rides elevation ~0.30 ± 0.17 of zigzag wander. */
-    band: [0.05, 0.62] as const,
-    driftSpeed: 0.011,
-    swaySpeed: 0.017,
+    /** Wall-clock. GLACIAL on purpose — the formation breathes, it does
+     *  not drift like weather. Its job is that no two frames are ever
+     *  identical over a long session. */
+    driftSpeed: 0.0015,
+    /** The toxic-green the painted mountain ranges borrow for their
+     *  crest light, so ridge lighting and nebula emission always agree. */
+    glowColor: "#37a32b",
   },
 
   /**
@@ -465,26 +479,50 @@ export const BRIDGE = {
    */
   centreline: [
     /**
-     * THE LUMINOUS HIGHWAY (second reference image, 2026-08-01): the road of
-     * light and the bridge are ONE continuous path. It passes low behind the
-     * viewer, RAMPS up from the bottom-right of frame onto the span, crests
-     * past the huge main tower right-of-centre, crosses to the smaller far
-     * tower, and DESCENDS into the dark right-hand mountains. The Y profile
-     * is the ramp: low near, high at the towers, sinking at the far exit.
+     * THE LUMINOUS HIGHWAY, now a CINEMATIC S-CURVE (client, 2026-08-03
+     * round 4: "a long cinematic S-curve — begin close to the camera,
+     * gently curve across the landscape, and naturally connect into the
+     * suspension bridge"). The road still passes low behind the viewer and
+     * ends bottom-centre AT the eye (u0.1 projects to 0.504, 0.861), but
+     * the approach now BOWS LEFT to x≈0.44 through u 0.2–0.32 (clear of
+     * the text column at x<0.35) before sweeping right through the main
+     * tower (0.601) to the exit (0.831) — one inflection, solved in
+     * _camsolve.mjs, that walks the eye directly up to the towers. The Y
+     * profile is unchanged: low near, high at the towers, sinking exit.
      */
-    { u: 0.0, p: [140, 36, 920] },
-    { u: 0.25, p: [200, 48, 490] },
-    { u: 0.495, p: [320, 80, 70] }, // MAIN TOWER base
-    { u: 0.785, p: [620, 84, -340] }, // FAR TOWER base
+    { u: 0.0, p: [158, 36, 920] },
+    { u: 0.17, p: [170, 44, 660] },
+    { u: 0.33, p: [152, 55, 390] },
+    { u: 0.505, p: [320, 80, 70] }, // MAIN TOWER base
+    { u: 0.79, p: [620, 84, -340] }, // FAR TOWER base
     { u: 1.0, p: [900, 62, -590] },
   ],
 
   /** Derived at init from the arc-length table. Recompute if points change. */
-  arcLength: 1760,
+  arcLength: 1782,
 
-  deckWidth: 46,
-  deckThickness: 3.2,
-  deckCamber: 1.4,
+  /** WIDENED 46 → 74 (client, 2026-08-03 round 2: "the bridge in the image
+   *  is WIDER — make it exactly like the image"), and KEPT wide through the
+   *  round-4 redesign (client confirmed): the ribbon is wide and paper-thin,
+   *  not narrow. legSpacing, cable lateralOffset, pier widths and the
+   *  traffic lanes all moved with it — the deck must still pass INSIDE the
+   *  tower portals. */
+  deckWidth: 74,
+  /** SLASHED 3.2 → 0.8 (client, round 4: deck visual thickness down
+   *  70–80% — "a thin floating ribbon suspended in space", no volume, no
+   *  weight). The deck now has a top surface only; nothing is generated
+   *  below it. */
+  deckThickness: 0.8,
+  deckCamber: 0.5,
+
+  /**
+   * The roadway weave's lane lattice (pass 2). The continuous GL filaments
+   * in bridgeFibers draw this many lanes; the particle system's dust rows
+   * SNAP ONTO the same lattice so the two families interleave as one woven
+   * material instead of two mismatched line patterns beating against each
+   * other.
+   */
+  fiberLanes: 34,
 
   /**
    * The bridge is not uniformly a suspension bridge. The near and far ends
@@ -493,27 +531,39 @@ export const BRIDGE = {
    * cables (tower top → deck-level anchorage) cover part of the approaches.
    */
   sections: {
-    nearApproach: [0.0, 0.495],
-    mainSpan: [0.495, 0.785],
-    farApproach: [0.785, 1.0],
+    nearApproach: [0.0, 0.505],
+    mainSpan: [0.505, 0.79],
+    farApproach: [0.79, 1.0],
   },
 
+  /**
+   * SLIMMER AND TALLER (client, round 4: "elegant pillars of pure light
+   * instead of heavy structural columns — emphasize height, lightness,
+   * refinement"). +10% height each (main top projects to y 0.184, still
+   * inside frame); the real slimming happens in bridgeTargets — leg member
+   * width 4.4 → 1.6 — so the same particle share condenses into hotter,
+   * thinner lines. legSpacing is NOT slimmed: it is the portal the 74-wide
+   * deck passes through and must exceed the deck width.
+   */
   towers: {
     main: {
-      u: 0.495,
+      u: 0.505,
       baseY: 80,
-      height: 175, // saddle at Y = 255
-      legSpacing: 34,
-      legTaper: 0.62,
-      crossBraceY: [130, 186, 243],
+      height: 192, // saddle at Y = 272
+      /** Just outside the widened deck (74) — a portal the road passes through. */
+      legSpacing: 80,
+      legTaper: 0.52,
+      crossBraceY: [130, 192, 254],
     },
     far: {
-      u: 0.785,
+      u: 0.79,
       baseY: 84,
-      height: 102, // saddle at Y = 186
-      legSpacing: 26,
-      legTaper: 0.66,
-      crossBraceY: [126, 164],
+      height: 114, // saddle at Y = 198
+      /** Same deck passes through this portal too — the far pylon is squat
+       *  and wide in world space; perspective slims it on screen. */
+      legSpacing: 78,
+      legTaper: 0.56,
+      crossBraceY: [128, 172],
     },
   },
 
@@ -543,7 +593,8 @@ export const BRIDGE = {
      */
     sagRatio: 0.225,
     count: 2,
-    lateralOffset: 19,
+    /** Just inside the widened deck edges (±37). */
+    lateralOffset: 35,
     /**
      * Side spans: beyond each tower the cable descends to a deck-level
      * anchorage, as the reference frame clearly draws left of the main tower.
@@ -558,34 +609,42 @@ export const BRIDGE = {
   },
 
   hangers: {
-    spacing: 14,
+    /** HALVED 14 → 7 (round 4), then 7 → 6 (Pass 1: "increase cable
+     *  density significantly — the cables should create rhythm"). With
+     *  both side spans this yields ~175 columns per side, ~350 hair-thin
+     *  verticals; the budget moved with it so each thread keeps its
+     *  along-line continuity. */
+    spacing: 6,
     /** Prevents zero-length hangers where the cable meets the deck at mid-span. */
     minLength: 2.5,
   },
 
   piers: {
     spacing: 78,
-    widthTop: 16,
-    widthBase: 26,
+    /** SLIMMED 26/42 → 9/14 (client, round 4: no visible structural mass —
+     *  the deck is a ribbon held up by threads of light, not columns). */
+    widthTop: 9,
+    widthBase: 14,
   },
 
   /**
    * How the particle budget is divided.
    *
    * Deliberately NOT proportional to surface area — particle count buys
-   * legibility of THIN things. Towers get 20%: they are the reference frame's
-   * protagonists and were reading as wire. Hangers DOWN to 12%: at 20% the
-   * hanger curtain out-shouted the cables and towers it hangs between. Cables
-   * up to 20%, which now also covers the two side spans.
+   * legibility of THIN things. Round-4 rebalance: the deck takes the largest
+   * share because its fiber lines must read as CONTINUOUS filaments (density
+   * along each line is what closes them into unbroken light); every slimmed
+   * member (towers, piers, hangers) needs LESS budget for MORE intensity,
+   * because the same particles condense into a thinner line.
    */
   targetDistribution: {
-    deck: 0.28,
+    deck: 0.38,
+    /** +2 points with the 7 → 6 spacing (Pass 1): a denser curtain must
+     *  not come out of each thread's own continuity. */
     hangers: 0.12,
-    mainCables: 0.2,
-    towers: 0.2,
-    /** The chasm made the piers 150–200u tall; they need the extra density
-     *  to read as columns instead of dotted lines. */
-    piers: 0.12,
+    mainCables: 0.18,
+    towers: 0.17,
+    piers: 0.07,
     railing: 0.08,
   },
 } as const;
@@ -609,37 +668,97 @@ export const TERRAIN = {
   segmentsX: 384,
   segmentsZ: 384,
 
-  /** Layered value noise, [frequency, amplitude]. */
-  octaves: [
-    [0.00042, 148], // continental — the big ridgelines
-    [0.0012, 62], // hills
-    [0.0038, 19], // undulation
-    [0.011, 6.5], // surface roughness
-    /**
-     * Micro detail. Invisible on any surface; its entire job is SILHOUETTES.
-     * The terrain is read almost entirely from rim light along ridgelines, and a
-     * ridge built from four octaves is a smooth mathematical curve that looks
-     * it. This octave makes the edge ragged, and ragged edges read as rock.
-     * First thing dropped by anyone optimising the noise. Do not.
-     */
-    [0.034, 1.8],
-  ] as ReadonlyArray<readonly [number, number]>,
-
   /** Deterministic. A landscape that varies per load cannot be composed. */
   noiseSeed: 0x5eed_1a3f,
 
   /**
-   * Ruggedness scaled by DEPTH (client direction, 2026-08-01: "make the land
-   * rise and fall more"): the background runs wild at 1.35× while the ground
-   * near the lens calms to 0.85× — relief where the eye reads silhouettes,
-   * never a wall in front of the camera.
+   * THE LAYERED WORLD (client direction, 2026-08-03 round 3: "an entirely
+   * new terrain system — multiple layers of mountains, rolling hills,
+   * valleys, ridges; never flat, never uniform; naturally formed over
+   * millions of years, not procedurally generated").
+   *
+   * The heightfield is now COMPOSED, not a single fbm stack:
+   *
+   *   hills      gentle rolling base, everywhere — the connective tissue
+   *   mountains  ridged multifractal RANGES, domain-warped twice so no two
+   *              silhouettes repeat and nothing aligns to a grid
+   *   belt       a low-frequency mask that gathers mountains into ranges
+   *              with quiet plains between — mountains cluster, they are
+   *              never evenly spaced
+   *   valleys    broad negative basins flowing between the ranges
+   *   micro      silhouette raggedness (see the note on `micro` below)
+   *
+   * Every amplitude is scaled by DEPTH (see depthRamp): small hills and
+   * ridges near the lens, medium mountains across the midground, giants at
+   * the horizon — the classic three-plane cinematic layering the reference
+   * image is built from.
    */
-  relief: {
-    far: 1.35,
-    near: 0.85,
-    zFar: -350,
-    zNear: 250,
+  hills: {
+    freq: 0.0016,
+    octaves: 4,
+    lacunarity: 2.03,
+    gain: 0.5,
+    /** Amplitude near the camera vs at the horizon. */
+    amp: { near: 34, far: 72 },
   },
+
+  mountains: {
+    freq: 0.00082,
+    octaves: 5,
+    lacunarity: 2.07,
+    gain: 0.52,
+    /** Crest sharpening exponent of the ridged transform (1-|n|)^s. Higher
+     *  is craggier; below ~1.6 the ranges soften into dunes. */
+    sharpness: 2.2,
+    amp: { near: 108, far: 430 },
+    /**
+     * DOUBLE domain warp — the single most important anti-repetition tool.
+     * The coarse warp (170u at ~600u wavelength) bends whole ranges so no
+     * chain runs straight; the fine warp (34u) kinks individual spurs.
+     * Value noise unwarped shows its lattice within seconds of looking.
+     */
+    warp: { freq: 0.0016, strength: 170, freq2: 0.006, strength2: 34 },
+    /**
+     * The range mask. Below `low` the mountain field contributes only
+     * `floor` (isolated knolls on the plains); above `high` a full range
+     * stands. The floor is small but non-zero — a plain with literally no
+     * mountain energy reads as a different biome, not a quiet region.
+     */
+    /**
+     * WIDENED (first probe round): at 0.38–0.78 the belts left the camera's
+     * visible sector almost rangeless — the horizon read flat, which is the
+     * exact failure the rework exists to fix. More of the world carries
+     * ranges now; the clearance corridor still keeps the bridge's own path
+     * open, so width here costs the composition nothing.
+     */
+    belt: { freq: 0.00095, low: 0.3, high: 0.66, floor: 0.08 },
+  },
+
+  /** Broad basins between ranges. Deeper with distance — the near ground
+   *  rolls, the far world is carved. */
+  valleys: { freq: 0.00055, depth: 58, low: 0.15, high: 0.85 },
+
+  /**
+   * Micro detail, [frequency, amplitude]. Invisible on any surface; its
+   * entire job is SILHOUETTES. A ridgeline built from smooth octaves is a
+   * mathematical curve and looks like one — these make the edge ragged, and
+   * ragged edges read as rock. First thing dropped by anyone optimising the
+   * noise. Do not.
+   */
+  micro: [
+    [0.011, 6],
+    [0.034, 2.2],
+  ] as ReadonlyArray<readonly [number, number]>,
+
+  /**
+   * How amplitude scales from the lens to the horizon: 0 at zNear, 1 at
+   * zFar, raised to `exponent` so the growth back-loads — the midground
+   * stays medium and the last third of the world carries the giants.
+   */
+  /** Exponent 1.0 (was 1.25): the back-loading left the MIDGROUND too calm —
+   *  medium mountains are the layer the eye actually reads, the giants only
+   *  close the horizon behind them. */
+  depthRamp: { zNear: 250, zFar: -900, exponent: 1.0 },
 
   /**
    * The SOFT SADDLE (client direction, 2026-08-01 round 2: "no carved-out
@@ -674,17 +793,39 @@ export const TERRAIN = {
     knee: 0.1,
   },
 
-  /** Placed for composition, not generated. Negative heights are BASINS. */
+  /**
+   * Placed for composition, not generated. Negative heights are BASINS.
+   *
+   * REDUCED with the layered-world rework: the generated ranges now supply
+   * the mountains these used to fake, so each ridge is an accent guaranteeing
+   * a compositional fact (the deck exits INTO mountains; the left flank is
+   * never empty) rather than the mountain itself. At the old heights they
+   * stacked on top of the generated relief into 450u walls.
+   */
   framingRidges: [
     /** BEHIND the far exit at the RIGHT, so the deck fades INTO the
      *  mountains where it leaves the frame — not in front of the far tower. */
-    { centre: [1110, 0, -720], radius: 400, height: 170 },
-    { centre: [1290, 0, -1060], radius: 520, height: 240 },
+    { centre: [1110, 0, -720], radius: 400, height: 120 },
+    { centre: [1290, 0, -1060], radius: 520, height: 160 },
+    /**
+     * The RIGHT-OF-FRAME layering (heightfield scan, 2026-08-03): the belt
+     * noise happens to gather this seed's generated ranges on the LEFT, so
+     * the visible right sector — where the reference stacks range upon
+     * range — came out bare. Four accents restore the layers: a midground
+     * range at the right edge, a backdrop the far tower reads against, a
+     * fog-veiled giant closing the horizon under the nebula, and a low
+     * near hill rolling through the bottom-right corner. All verified
+     * outside the clearance corridor and under the deck sightlines.
+     */
+    { centre: [1150, 0, -250], radius: 320, height: 150 },
+    { centre: [900, 0, -900], radius: 420, height: 260 },
+    { centre: [450, 0, -1050], radius: 500, height: 300 },
+    { centre: [780, 0, 120], radius: 280, height: 85 },
     /** The LEFT flank, layered (client: "the left is too empty — give it
      *  mountains and shadows"). Three depths, separated by fog. */
-    { centre: [-770, 0, -300], radius: 380, height: 138 },
-    { centre: [-1080, 0, -580], radius: 470, height: 215 },
-    { centre: [-520, 0, -940], radius: 520, height: 245 },
+    { centre: [-770, 0, -300], radius: 380, height: 80 },
+    { centre: [-1080, 0, -580], radius: 470, height: 120 },
+    { centre: [-520, 0, -940], radius: 520, height: 140 },
     /**
      * The DARK WATER BASIN under the main span (second reference image): a
      * broad organic hollow, not a cut — the mist pools into it as water,
@@ -743,6 +884,176 @@ export const TERRAIN = {
      * expensive one and every parameter that sets a brightness is cheap.
      */
     rimPower: 3.2,
+
+    /**
+     * The colour the terrain dissolves INTO at distance (world-polish pass:
+     * "the nebula should wrap around the environment rather than floating
+     * behind it"). Plain --ink is the SKY's blue-black, and far mountains
+     * mixed toward it looked cut out against a nebula that is green; this is
+     * ink pulled toward near-black emerald, so the ground's horizon and the
+     * sky's body meet in one atmosphere. Luminance 0.057 — still inside the
+     * near-black band; the wrap costs the colour rule nothing.
+     */
+    horizonFog: "#09110d",
+  },
+
+  /**
+   * INTERNAL EMISSIVE GLOW (client, 2026-08-03 round 3: "the glow comes
+   * from within the landscape rather than sitting on top of it — internal
+   * emissive lighting with soft volumetric diffusion, no hard bloom").
+   *
+   * A per-vertex emissive factor baked with the heightfield:
+   *
+   *   crest    height above the locally blurred field — energy accumulates
+   *            along ridgelines, hilltops and peaks, exactly where the
+   *            brief puts it
+   *   elev     absolute elevation ramp — valley floors stay dark
+   *   cluster  low-frequency noise so whole regions are quiet while others
+   *            burn — brightness is NEVER distributed evenly
+   *
+   * The strongest baked value renders around 0.30 luminance — well under
+   * the 0.62 bloom threshold. The terrain glows; it never blooms. The
+   * bright pinpoint energy on top of this diffusion belongs to the network
+   * (below), not the mesh.
+   */
+  glow: {
+    /** Prominence (u above the blurred field) that counts as a full crest.
+     *  14, down from 26 (first probe round): real ridge prominence at the
+     *  384-grid scale runs 8–20u, so 26 left crests at half strength. */
+    crestNorm: 14,
+    /** Elevation ramp — below elevLow fully dark, above elevHigh full.
+     *  Lowered so the MIDGROUND hills participate; the valley floors sit
+     *  under elevLow and stay dark regardless. */
+    elevLow: 10,
+    elevHigh: 170,
+    /** The quiet-region mask. Same field seeds the network's density, so
+     *  the mesh diffusion and the particle energy always agree about which
+     *  regions are alive. */
+    clusterFreq: 0.004,
+    /** 1.9, up from 1.6 (world-polish pass): quiet regions QUIETER — the
+     *  contrast between live and dark ground is the hierarchy. */
+    clusterPow: 1.9,
+    /** 0.85, down from 1.0 (world-polish pass): the terrain stays a step
+     *  darker than the bridge, always. Light guides; darkness dominates. */
+    strength: 0.85,
+    /** Slow breathing of the internal light. Hz, wall clock. */
+    breatheHz: 0.09,
+    /** deep emerald → toxic green, the "lit from inside" ramp. */
+    colorA: "#0e3b1e",
+    colorB: "#37a32b",
+  },
+
+  /**
+   * THE ENERGY NETWORK — the terrain's luminous surface (client, 2026-08-03
+   * round 3: "an illuminated digital landscape made from thousands of
+   * glowing green particles connected by extremely thin energy lines...
+   * luminous particle streams naturally follow the elevation of the
+   * ground").
+   *
+   * Four deterministic layers, all generated by MARCHING THE REAL
+   * HEIGHTFIELD (never painted on):
+   *
+   *   lines    polylines advected through a blend of the contour direction
+   *            (wrapping hills like elevation isolines) and the downslope
+   *            direction (draining into valleys like water), plus noise
+   *            wander — so every line bends over hills, wraps around
+   *            valleys and climbs mountains, because it literally walks
+   *            the surface
+   *   scatter  thousands of dim surface particles, the ground's grain
+   *   hubs     bright nodes at genuine local summits — energy concentrates
+   *            at peaks, and only there does the palette reach yellow-green
+   *   motes    microscopic particles floating just above the surface,
+   *            drifting slowly — the depth-and-air cue
+   *
+   * Density follows the SAME cluster field as the mesh glow: dense
+   * constellations in the live regions, near-nothing in the quiet ones.
+   */
+  network: {
+    /** Line vertices sit this far above the surface — under the z-fight
+     *  floor and under the seed particles' 0.15–0.55 rest offset. */
+    lift: 0.7,
+    /** March step, world units. Half the terrain cell — lines follow the
+     *  interpolated surface faithfully. */
+    step: 8.5,
+    /** Line length in steps, hash-varied. Wide spread on purpose: uniform
+     *  line lengths read as a generated pattern instantly. */
+    segments: [24, 92] as const,
+    /**
+     * Two families: contour-followers (bias ~0.1, wrap the landforms) and
+     * flow-lines (bias ~0.6, run downhill into the basins). The mix is what
+     * makes the network read as one drainage system rather than as
+     * concentric rings.
+     */
+    /** Min raised off zero (first probe round): a pure contour line around a
+     *  small knoll CLOSES INTO A RING — the artificial-wireframe look the
+     *  brief bans. A little permanent downhill drift turns every would-be
+     *  ring into an open spiral. */
+    contourBias: [0.12, 0.26] as const,
+    flowBias: [0.45, 0.8] as const,
+    flowFraction: 0.32,
+    /** Rotational noise blended into the march direction. 0.35, down from
+     *  0.65 (probe round 4): on steep complex flanks the stronger wander
+     *  tangled the network into scribbles — the lines must WRAP the forms,
+     *  silkily, and let the relief supply the complexity. */
+    wander: 0.35,
+    /** Per-step direction smoothing — kills kinks without straightening. */
+    turnSmooth: 0.55,
+    /** A minority of lines carry extra energy: the "major flowing terrain
+     *  paths" where brightness naturally accumulates. */
+    trunkFraction: 0.12,
+    /** Camera-space near fade, same law as every luminous element: the
+     *  ground at the viewer's feet stays calm. */
+    nearFade: [90, 340] as const,
+    /** Same reference distance as the bridge particles. */
+    sizeAttenuation: 950,
+    /** Master output scale — the one dial for the whole network. */
+    master: 1.5,
+    /**
+     * Occasional luminous streams travelling the lines. GENTLE: 46 u/s
+     * along the surface (the orb tour moves ~1,000 u/s — this is 4% of
+     * that), one soft ~90u pulse per 430u of line, on under half the lines.
+     */
+    /** Gain 0.6, down from 0.85 (world-polish pass): the streams must be
+     *  noticed only when looked for — alive, never busy. */
+    pulse: { wavelength: 430, speed: 46, gain: 0.6, fraction: 0.45 },
+    /**
+     * near-black green → deep emerald → forest → toxic → electric lime.
+     * The ramp is evaluated per-vertex by energy; only hub peaks push into
+     * the final stop. Yellow-green (#d9ff9c) is reserved for hub cores.
+     */
+    ramp: ["#0d2a12", "#1e5c17", "#37a32b", "#7cfc00"] as const,
+    hub: {
+      /** Only genuine summits qualify — scanned from the real field. 70,
+       *  down from 110: the visible midground's summits run 80–180. */
+      minHeight: 70,
+      gridStep: 44,
+      cap: 150,
+      sizePx: [3.0, 4.6] as const,
+      bright: [0.5, 0.72] as const,
+    },
+    linesByTier: {
+      ultra: 1900,
+      high: 1500,
+      medium: 950,
+      low: 520,
+      minimal: 300,
+    } satisfies Record<string, number>,
+    /** The reference terrain's surface texture is mostly DOTS — the particle
+     *  grid. This is the layer that carries it; the counts are the point. */
+    scatterByTier: {
+      ultra: 75_000,
+      high: 60_000,
+      medium: 38_000,
+      low: 20_000,
+      minimal: 10_000,
+    } satisfies Record<string, number>,
+    motesByTier: {
+      ultra: 9_000,
+      high: 7_000,
+      medium: 4_200,
+      low: 2_200,
+      minimal: 1_200,
+    } satisfies Record<string, number>,
   },
 } as const;
 
@@ -939,7 +1250,11 @@ export const PARTICLES = {
    *
    * See scripts/viewport-check.mjs for what the drift actually is.
    */
-  sizePx: { min: 1.1, max: 2.9 },
+  /** Tightened 1.1–2.9 → 0.9–2.4 (client, round 4: "microscopic stars, not
+   *  blurry glowing dots" — every particle individually visible). The
+   *  matching change is the fragment falloff, sharpened so the sprite is a
+   *  hard-edged point instead of a soft disc. */
+  sizePx: { min: 0.9, max: 2.4 },
 
   /**
    * The distance at which a particle renders at its nominal sizePx. NOT a
@@ -975,7 +1290,11 @@ export const PARTICLES = {
     lifting: 0.55,
     gliding: 0.92,
     approaching: 1.0,
-    seated: 0.74,
+    /** Down from 0.74 → 0.62 → 0.5 → 0.46 across the client rounds. Round
+     *  4: "most of the bridge should remain relatively dark with soft
+     *  internal illumination" — brightness now comes from DENSITY (fiber
+     *  lines, condensed tower legs), never from the individual point. */
+    seated: 0.46,
   },
 
   blending: "additive",
@@ -1164,8 +1483,12 @@ export const INTERACTION = {
 // ---------------------------------------------------------------------------
 
 export const CAMERA = {
-  /** Wider with the on-deck viewpoint — a standing eye, not a telephoto. */
-  fov: 44,
+  /**
+   * CINEMATIC WIDE (client, 2026-08-03 camera-correction round: "28–35°,
+   * grandeur from perspective, not scale"). 35 vertical ≈ 50° horizontal
+   * at 3:2 — wide enough for the S-curve to spread, nowhere near fisheye.
+   */
+  fov: 35,
   near: 1,
   far: 4000,
   /**
@@ -1205,15 +1528,25 @@ export const CAMERA = {
    * the valley floor — where the ground streams flow, as in the reference.
    */
   /**
-   * OVER THE ROAD (final orientation, client-confirmed direction: the wide
-   * near ramp exits at the BOTTOM-LEFT under the viewer, the main tower
-   * looms left-of-centre at (0.39, top 0.20), the span crosses the frame
-   * rightward to the far tower at (0.60, 0.37), and the deck exits RIGHT
-   * at (0.71, 0.48), only ~1,580u out — near enough to stay a presence
-   * through the fog. Exact horizontal mirror of the previous solve.
+   * ON THE ROAD'S OWN LINE (client, 2026-08-03: "the near end must end AT
+   * my viewpoint, centred — EXACTLY like the reference image"). The camera
+   * stands directly over the highway: the light-road rises from the bottom
+   * CENTRE of the frame (u0.1 at x 0.523), the main tower at (0.60, top
+   * 0.21) right-of-centre precisely where the reference puts it, the far
+   * tower at (0.74, 0.37), the deck exiting right at (0.83, 0.48), horizon
+   * 0.465 — all solved against the reference frame in _camsolve.mjs.
    */
-  basePosition: [330, 86, 880] as const,
-  baseTarget: [360, 54, -240] as const,
+  /**
+   * RE-SOLVED (2026-08-03 camera-correction round, _camsolve.mjs): the eye
+   * now hovers 26u over the road's own start — LOW and just behind u=0, so
+   * the roadway erupts from BELOW the bottom edge (u0 projects to y 1.14)
+   * and its 74u width overfills the bottom corners. The S swings left to
+   * x 0.28, the main tower stands at 0.45 with its top at 0.13, the deck
+   * exits right at (0.73, 0.49), horizon 0.487. Grandeur from perspective:
+   * nothing in the world moved, only the camera.
+   */
+  basePosition: [140, 62, 980] as const,
+  baseTarget: [440, 52, -240] as const,
 
   /**
    * Framing constraints. These are the camera's real specification and they must
@@ -1264,9 +1597,11 @@ export const CAMERA = {
 
   /** Portrait re-composes rather than crops — a crop loses the sweep entirely. */
   portrait: {
-    fov: 54,
-    basePosition: [310, 92, 930] as const,
-    baseTarget: [350, 58, -240] as const,
+    /** Same low-and-behind language, opened wider — 9:16 keeps the road
+     *  ~60% of the bottom and the tower rising past the top third. */
+    fov: 58,
+    basePosition: [148, 66, 990] as const,
+    baseTarget: [400, 54, -240] as const,
   },
 
   orientationParallax: {
@@ -1287,7 +1622,10 @@ export const CAMERA = {
  * banned — each implies a source, and there isn't one.
  */
 export const LIGHTING = {
-  ambient: { intensity: 0.22 },
+  /** Halved-and-more (client, 2026-08-03: the ground must sit in black and
+   *  darkest greens, as the reference does — the light belongs to the roads
+   *  and the bridge, never to the land). */
+  ambient: { intensity: 0.09 },
 
   /**
    * Reads as diffuse skyglow. Its job is normal disambiguation — giving slopes a
@@ -1307,7 +1645,7 @@ export const LIGHTING = {
    * 0.030 x 0.66 = 0.020, which is what the pack meant.
    */
   key: {
-    intensity: 0.03,
+    intensity: 0.014,
     direction: [-0.4, 0.7, -0.35] as const,
   },
 
@@ -1346,7 +1684,7 @@ export const LIGHTING = {
     decay: 2,
     /** Hard ceiling, enforced in-shader. Unclamped, a passing river produces a
      *  spotlight sliding across a ridge — which implies an external agent. */
-    terrainClamp: 0.18,
+    terrainClamp: 0.11,
     /**
      * Kept BELOW terrainClamp on purpose.
      *
@@ -1359,20 +1697,22 @@ export const LIGHTING = {
      */
     intensityByPhase: {
       dormant: 0.0,
-      awakening: 0.055,
-      glide: 0.09,
-      assembly: 0.055,
-      completion: 0.045,
-      living: 0.025,
+      awakening: 0.03,
+      glide: 0.05,
+      assembly: 0.03,
+      completion: 0.022,
+      living: 0.014,
     },
   },
 
   /** A projected decal, driven by local bridge completion. NOT a reflection. */
   groundGlow: {
     halfWidth: 190,
-    /** Down from 0.26 with the reference-frame re-solve: the reference floor
-     *  is DARK, its light carried by discrete streams — not a uniform wash. */
-    peakOpacity: 0.17,
+    /** The reference floor is BLACK; the only ground light is the roads
+     *  themselves. Lifted 0.09 → 0.13 (world-polish pass): the spill is how
+     *  the bridge ROOTS into the terrain — the two systems share light where
+     *  they touch, which is what removes the boundary between them. */
+    peakOpacity: 0.13,
   },
 } as const;
 
@@ -1392,7 +1732,7 @@ export const POSTFX = {
      *  A weak lever: sweeping it 0.42 → 0.10 moved the colour ratio by under
      *  half a point, because it only widens the up-sample tent by a few texels.
      *  `mips` below is the control that actually sets the halo's size. */
-    radius: 0.42,
+    radius: 0.34,
     /**
      * MEASURED down from 5 — and it was 5 only because this field was declared
      * here and never read, so PostFX was using its own default.
@@ -1412,9 +1752,9 @@ export const POSTFX = {
      */
     mips: 3,
     strengthByPhase: {
-      dormant: 0.3,
-      awakening: 0.46,
-      glide: 0.62,
+      dormant: 0.22,
+      awakening: 0.34,
+      glide: 0.46,
       /**
        * Assembly OPENS lower than glide closes, which is the one discontinuity
        * in this curve and it is deliberate.
@@ -1428,10 +1768,15 @@ export const POSTFX = {
        * with enough authority, and taking it at the start of assembly costs
        * nothing at the completion peak, which is where the glow is the point.
        */
-      assembly: 0.44,
-      assemblyEnd: 0.88,
-      completion: 1.15,
-      living: 0.85,
+      /** Pulled down across the board (client, 2026-08-03: the bridge was
+       *  far past the reference's "ideal brightness" — neon soup), then
+       *  AGAIN in round 4 ("reduce bloom significantly, keep edges sharp,
+       *  physically believable glow"). The structure is razor line-work;
+       *  the only halo is a tight one on the hottest cores. */
+      assembly: 0.22,
+      assemblyEnd: 0.3,
+      completion: 0.42,
+      living: 0.26,
     },
     /** How long the exhale from the completion peak back down to `living`
      *  takes. Long enough to be a settle, not a switch. */
@@ -1475,9 +1820,12 @@ export const COMPLETION_PULSE = {
   bandWidth: 190,
   peakBrightness: 1.0,
   recoveryMs: 260,
-  /** Far → near, the same direction the build ran. */
-  direction: "farToNear",
-  bloomPeak: 1.15,
+  /** Near → far — away from the camera toward the mountains, the same
+   *  direction the round-5 build runs (client, 2026-08-03). */
+  direction: "nearToFar",
+  /** Down with the round-4 bloom cut — the pulse still crosses the
+   *  threshold visibly, it just no longer washes the frame. */
+  bloomPeak: 0.85,
   bloomPeakMs: 200,
 } as const;
 
@@ -1590,7 +1938,13 @@ export const CYCLE_LENGTH = REWIND_START + LOOP.returnWindow;
  * the clock starts at zero, because the cycle then owns the gathering as its
  * own first act.
  */
-export const INTRO_START = SCENE.loop ? 0 : ORB.tourDepart + 0.8;
+/**
+ * No-loop mode skips straight to the orb ARRIVING at the far end of the
+ * span (client, 2026-08-03: no 2–3 second wander — the orb is already at
+ * the bridge's tip and begins building at once). Loop mode still owns the
+ * full gathering + tour as its first act.
+ */
+export const INTRO_START = SCENE.loop ? 0 : ASSEMBLY.windowStart - 0.25;
 
 // ---------------------------------------------------------------------------
 // PERF

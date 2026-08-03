@@ -10,12 +10,12 @@
  * architectural rather than a matter of discipline — nobody can accidentally
  * make it opaque, because there is nothing to make opaque.
  *
- * The budget is deliberately NOT proportional to surface area. Hangers are ~2%
- * of the surface and take 20% of the particles, because particle count buys
- * legibility of THIN things: at proportional sampling each hanger would get
- * about 42 points and read as a dotted line with visible gaps. Broad surfaces
- * like the deck tolerate sparse sampling because additive blending fills in the
- * impression.
+ * The budget is deliberately NOT proportional to surface area — particle count
+ * buys legibility of THIN things, and since the round-4 redesign EVERYTHING
+ * here is thin: the deck is a weave of fiber lines, the towers are 1.6u-wide
+ * strokes, the hangers hairline threads. Density along a line is what closes
+ * it into continuous light; the per-target sizeScale is what keeps the fine
+ * elements fine instead of letting point size fake thickness.
  */
 
 import * as THREE from "three";
@@ -32,13 +32,21 @@ export interface TargetCloud {
   layer: Float32Array;
   /** Local structural normal — the direction a particle departs during rewind. */
   normal: Float32Array;
+  /**
+   * Per-target point-size multiplier (1 = nominal). The round-4 redesign
+   * grades the structure by FINENESS: deck micro-stars at ~0.5, hanger
+   * threads at ~0.62, fibers at 0.8, tower cores at 1. Folded into
+   * aSizeVar's fractional part in particles.ts — the attribute budget is
+   * at its hard limit of fourteen, so this must not become a fifteenth.
+   */
+  sizeScale: Float32Array;
   count: number;
 }
 
 type HeightAt = (x: number, z: number) => number;
 
 interface Sink {
-  push(p: THREE.Vector3, n: THREE.Vector3, layer: Layer): void;
+  push(p: THREE.Vector3, n: THREE.Vector3, layer: Layer, sizeScale?: number): void;
 }
 
 const _p = new THREE.Vector3();
@@ -123,12 +131,13 @@ export function buildTargets(nominal: number, heightAt: HeightAt): TargetCloud {
   const uArr = new Float32Array(nominal);
   const layerArr = new Float32Array(nominal);
   const normal = new Float32Array(nominal * 3);
+  const sizeScaleArr = new Float32Array(nominal);
 
   const grid = new SeparationGrid(TARGET.minSeparation);
   let count = 0;
 
   const sink: Sink = {
-    push(p, n, layer) {
+    push(p, n, layer, sizeScale = 1) {
       if (count >= nominal) return;
       if (!grid.accept(p.x, p.y, p.z, position)) return;
 
@@ -139,6 +148,7 @@ export function buildTargets(nominal: number, heightAt: HeightAt): TargetCloud {
       normal[o] = n.x;
       normal[o + 1] = n.y;
       normal[o + 2] = n.z;
+      sizeScaleArr[count] = sizeScale;
 
       // `u` from nearestU, never from the sampling parameter: a cable's own
       // parameter and its projected position along the bridge diverge near the
@@ -170,6 +180,7 @@ export function buildTargets(nominal: number, heightAt: HeightAt): TargetCloud {
     u: uArr.subarray(0, count),
     layer: layerArr.subarray(0, count),
     normal: normal.subarray(0, count * 3),
+    sizeScale: sizeScaleArr.subarray(0, count),
     count,
   };
 }
@@ -179,60 +190,84 @@ export function buildTargets(nominal: number, heightAt: HeightAt): TargetCloud {
 // ---------------------------------------------------------------------------
 
 /**
- * The edges get more than the surface. A uniformly sampled deck reads as a fuzzy
- * band; concentrating density at the edges gives it a crisp silhouette against
- * the dark, which is what makes the long foreground sweep read as a *road*
- * rather than as a smear of light.
+ * Along-line sampling bias. The first probe round showed the near road as a
+ * dotted carpet: uniform arc-length spacing (~1.5u) subtends several PIXELS
+ * inside 500u of the camera, and a line whose points are pixels apart is
+ * dots. Exponent 1.6 concentrates samples where they subtend the most
+ * screen (≈1.9× density at the near ramp, 0.76× at the fogged far end,
+ * where perspective packs many u into each pixel anyway).
  */
-const DECK_ZONES = [
-  { share: 0.34, kind: "topEdge" },
-  { share: 0.22, kind: "bottomEdge" },
-  { share: 0.26, kind: "topSurface" },
-  { share: 0.18, kind: "interior" },
-] as const;
+const FIBER_NEAR_BIAS = 2.0;
+
+const FIBER_SHARE = 0.76;
 
 function buildDeck(sink: Sink, rng: ReturnType<typeof makeRng>, n: number) {
   const half = BRIDGE.deckWidth / 2;
+  const fiberHalf = half - 2;
 
-  for (const zone of DECK_ZONES) {
-    const zoneCount = Math.floor(n * zone.share);
-    for (let i = 0; i < zoneCount; i++) {
-      // Stratified in u so density is uniform by ARC LENGTH — sampling the
-      // spline parameter instead produces visible bright and dark banding.
-      const u = (i + rng.next()) / zoneCount;
+  // Fiber count scales with budget so along-line spacing stays tight enough
+  // to read as an unbroken filament at every tier.
+  const fiberBudget = Math.floor(n * FIBER_SHARE);
+  const lines = THREE.MathUtils.clamp(Math.round(fiberBudget / 1400), 12, 18);
+
+  // Cosine centre-weighting, normalised so the shares spend the full budget.
+  const weights: number[] = [];
+  let weightSum = 0;
+  for (let l = 0; l < lines; l++) {
+    const offset = lines === 1 ? 0 : (l / (lines - 1)) * 2 - 1;
+    const w = 0.62 + 0.38 * Math.cos((offset * Math.PI) / 2);
+    weights.push(w);
+    weightSum += w;
+  }
+
+  for (let l = 0; l < lines; l++) {
+    // SNAPPED onto the filament lattice (pass 2): the dust rows must sit ON
+    // the continuous GL lanes in bridgeFibers, not on their own near-miss
+    // spacing — two line families a few degrees apart beat against each
+    // other and read as noise, which is the one thing the weave must never
+    // do. Row l takes filament lane round(l · (lanes-1)/(rows-1)).
+    const lane = Math.round((l * (BRIDGE.fiberLanes - 1)) / (lines - 1));
+    const offset = (lane / (BRIDGE.fiberLanes - 1)) * 2 - 1;
+    const across0 = offset * fiberHalf;
+    const perLine = Math.floor((fiberBudget * weights[l]) / weightSum);
+
+    for (let i = 0; i < perLine; i++) {
+      // Stratified, then bent through the near bias — the map is monotone,
+      // so stratification (no banding) survives it.
+      const u = Math.pow((i + rng.next()) / perLine, FIBER_NEAR_BIAS);
       const { normal: nrm, binormal } = centreline.frameAt(u);
       centreline.positionAt(u, _p);
 
-      let across: number;
-      let vertical: number;
-
-      switch (zone.kind) {
-        case "topEdge":
-          across = (rng.next() < 0.5 ? -1 : 1) * (half - rng.range(0, 1.2));
-          vertical = BRIDGE.deckCamber;
-          break;
-        case "bottomEdge":
-          across = (rng.next() < 0.5 ? -1 : 1) * (half - rng.range(0, 1.2));
-          vertical = -BRIDGE.deckThickness;
-          break;
-        case "topSurface": {
-          across = rng.range(-half, half);
-          // Camber: 1.4u higher at the centre than at the edges, as real
-          // roadways are for drainage. Invisible directly; its effect is that
-          // the crown catches the rim of the glow differently across the width.
-          const k = 1 - (across / half) ** 2;
-          vertical = BRIDGE.deckCamber * k;
-          break;
-        }
-        default:
-          across = rng.range(-half, half);
-          vertical = rng.range(-BRIDGE.deckThickness, 0);
-          break;
-      }
-
-      _p.addScaledVector(binormal, across).addScaledVector(nrm, vertical);
-      sink.push(_p, nrm, "deck");
+      // ±0.06 lateral jitter: enough to defeat the dedup grid's coincidence
+      // test, far below anything the eye can see. The line stays a line.
+      const across = across0 + rng.jitter(0.06);
+      const k = 1 - (across / half) ** 2;
+      _p.addScaledVector(binormal, across).addScaledVector(
+        nrm,
+        BRIDGE.deckCamber * k,
+      );
+      // 0.8 → 0.55 (pass 2): the filaments are the material now — seated
+      // fiber particles become the micro-detail living inside it.
+      sink.push(_p, nrm, "deck", 0.55);
     }
+  }
+
+  // --- micro-stars between the fibers --------------------------------------
+  const starCount = n - fiberBudget;
+  for (let i = 0; i < starCount; i++) {
+    const u = (i + rng.next()) / starCount;
+    const { normal: nrm, binormal } = centreline.frameAt(u);
+    centreline.positionAt(u, _p);
+
+    const across = rng.range(-fiberHalf, fiberHalf);
+    const k = 1 - (across / half) ** 2;
+    // A whisper of lift above the surface — dust hanging over the weave,
+    // catching light without ever forming a layer.
+    _p.addScaledVector(binormal, across).addScaledVector(
+      nrm,
+      BRIDGE.deckCamber * k + rng.range(0, 0.3),
+    );
+    sink.push(_p, nrm, "deck", rng.range(0.35, 0.5));
   }
 }
 
@@ -256,11 +291,14 @@ function buildRailing(sink: Sink, rng: ReturnType<typeof makeRng>, n: number) {
       const u = (i + rng.next()) / perSide;
       const { normal: nrm, binormal } = centreline.frameAt(u);
       centreline.positionAt(u, _p);
+      // Barely above the ribbon (was +1.8): on a paper-thin deck a floating
+      // rail reads as a second, detached line. This is the ribbon's own
+      // edge, drawn one hair sharper and higher than the weave.
       _p.addScaledVector(binormal, side * lateral).addScaledVector(
         nrm,
-        BRIDGE.deckCamber + 1.8 + rng.jitter(0.15),
+        BRIDGE.deckCamber + 0.7 + rng.jitter(0.06),
       );
-      sink.push(_p, nrm, "railing");
+      sink.push(_p, nrm, "railing", 0.7);
     }
   }
 }
@@ -274,10 +312,10 @@ function buildRailing(sink: Sink, rng: ReturnType<typeof makeRng>, n: number) {
  * them, between the legs, as it does on a real suspension bridge. The tower is
  * not a thing the deck sits on top of.
  *
- * Towers are the densest part of the bridge: 14% of the budget across two
- * relatively small structures. That density is why they read as near-solid bars
- * of light with white-hot cores — the additive accumulation pushes them past
- * lime-core. Nobody paints that.
+ * Towers remain the densest element per unit of geometry: 18% of the budget
+ * condensed into members a third as wide as the previous round's. The additive
+ * accumulation pushes the slim cores past lime-core into near-white — which is
+ * exactly the round-4 ask: pillars of pure light, not structural columns.
  */
 function buildTowers(
   sink: Sink,
@@ -307,10 +345,12 @@ function buildTowers(
 
     for (let i = 0; i < pylonCount; i++) {
       const v = rng.next();
+      // Slimmed with the legs (round 4): the pylon is a falling thread of
+      // light into the water, not a caisson.
       _p.copy(base)
-        .addScaledVector(binormal, rng.jitter(tower.legSpacing * 0.42))
+        .addScaledVector(binormal, rng.jitter(tower.legSpacing * 0.3))
         .addScaledVector(nrm, -v * (below - 2));
-      _p.x += rng.jitter(2.4);
+      _p.x += rng.jitter(1.0);
       _n.copy(binormal);
       sink.push(_p, _n, "towers");
     }
@@ -319,13 +359,18 @@ function buildTowers(
     // Legs run slightly PAST the cable saddle — on the reference frame the
     // tower tops stand proud of the cable anchorage, which is what makes them
     // read as masts rather than as posts the cable happens to end on.
+    //
+    // Member width 4.4 → 1.6 (round 4: "elegant pillars of pure light").
+    // The particle share barely moved, so the same light condenses into a
+    // line a third as wide — the additive sum runs hotter and the leg reads
+    // as a drawn laser stroke, not a structural column.
     const legHeight = tower.height * 1.045;
     for (let i = 0; i < legCount; i++) {
       const side = rng.next() < 0.5 ? -1 : 1;
       const h = rng.next();
       // Smooth taper, not linear: a linear taper reads as a wedge.
       const k = h * h * (3 - 2 * h);
-      const width = THREE.MathUtils.lerp(1, tower.legTaper, k) * 4.4;
+      const width = THREE.MathUtils.lerp(1, tower.legTaper, k) * 1.6;
 
       _p.copy(base)
         .addScaledVector(binormal, (side * tower.legSpacing) / 2 + rng.jitter(width))
@@ -344,7 +389,7 @@ function buildTowers(
           ((i + rng.next()) / perBrace - 0.5) * tower.legSpacing;
         _p.copy(base)
           .addScaledVector(binormal, across)
-          .addScaledVector(nrm, localY + rng.jitter(1.1));
+          .addScaledVector(nrm, localY + rng.jitter(0.45));
         sink.push(_p, nrm, "towers");
       }
     }
@@ -362,7 +407,7 @@ function buildTowers(
  * Mostly a straight descent with a mild parabolic sag below the chord
  * (sagFraction of the total drop). Returns null outside the side span.
  */
-function sideCableY(u: number): number | null {
+export function sideCableY(u: number): number | null {
   const { main, far } = BRIDGE.towers;
   const spans = [
     {
@@ -428,14 +473,16 @@ function buildCables(sink: Sink, rng: ReturnType<typeof makeRng>, n: number) {
         const y = seg.main ? centreline.cableRise(u) : sideCableY(u);
         if (y === null) continue;
         const rise = y - _p.y;
-        const jx = rng.disc(0.5);
+        // disc(0.5) → disc(0.2) (round 4: "dramatically thinner" cables) —
+        // the drape becomes a drawn line, not a rope of scattered light.
+        const jx = rng.disc(0.2);
 
         _p.addScaledVector(binormal, side * lat + jx.x).addScaledVector(
           nrm,
           rise + jx.y,
         );
 
-        sink.push(_p, nrm, "mainCables");
+        sink.push(_p, nrm, "mainCables", 0.7);
       }
     }
   }
@@ -495,10 +542,15 @@ function buildHangers(sink: Sink, rng: ReturnType<typeof makeRng>, n: number) {
       for (let side = -1; side <= 1; side += 2) {
         for (let i = 0; i < perHanger; i++) {
           const k = (i + rng.next()) / perHanger;
+          // Jitter 0.2 → 0.05 and size 0.62 (round 4: "hundreds of
+          // perfectly aligned, evenly spaced vertical cables… almost
+          // disappear into the darkness while remaining visible through
+          // subtle green illumination"). At half spacing the curtain is
+          // twice as fine; each thread is a hairline, not a beam.
           _t.copy(_p)
-            .addScaledVector(binormal, side * lat + rng.jitter(0.2))
+            .addScaledVector(binormal, side * lat + rng.jitter(0.05))
             .addScaledVector(nrm, deckLocal + k * length);
-          sink.push(_t, nrm, "hangers");
+          sink.push(_t, nrm, "hangers", 0.5);
         }
       }
     }
@@ -565,7 +617,7 @@ function buildPiers(
         _p.x += (Math.sin(angle) * width) / 2 * 0.35;
 
         _n.set(Math.cos(angle), 0, Math.sin(angle)).normalize();
-        sink.push(_p, _n, "piers");
+        sink.push(_p, _n, "piers", 0.7);
         placed++;
         if (placed >= n) return;
       }

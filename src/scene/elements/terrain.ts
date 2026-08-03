@@ -1,24 +1,34 @@
 /**
- * THE VALLEY.
+ * THE LIVING WORLD.
  *
- * Built geometry, never particles. Law 1: the world is not made of specks, only
- * the bridge is. Disable the particle system entirely and you should still see a
- * complete, believable dark valley — a finished environment that happens to have
- * nothing in it. If disabling particles leaves a blank frame the premise has
- * collapsed, because a place that is itself made of specks cannot be
- * *transformed* by specks; it is just noise rearranging itself.
+ * Rebuilt to the 2026-08-03 round-3 direction: not a dark plane the bridge
+ * happens to stand on, but a layered, cinematic landscape — rolling hills near
+ * the lens, medium ranges across the midground, giants at the horizon, deep
+ * valleys flowing between them — with light that comes from WITHIN the land.
  *
- * The previous implementation made the terrain a particle field, on the argument
- * that a displaced plane has a silhouette exactly as sharp as its tessellation
- * and the eye reads that edge as geometry. That is a real risk and it is handled
- * here by two things rather than by dissolving the land: the fifth noise octave
- * makes ridgelines ragged at a scale finer than the mesh reads, and fog eats the
- * far ones before their edges resolve.
+ * Two responsibilities live here:
  *
- * The albedo is essentially pure black. Ninety percent of what you can see of
- * the landscape is the rim term — a thin green edge where a surface turns away
- * from the camera. That is how hills genuinely look at night, and it is why the
- * terrain needs almost no shading: almost none of it is lit.
+ *   1. THE HEIGHTFIELD. A composed field (hills + domain-warped ridged
+ *      ranges gathered into belts + basins + micro raggedness), baked once,
+ *      deterministic, and queried by everything else in the scene: seeds rest
+ *      on it, piers reach down to it, mist pools in it, the energy network
+ *      marches across it. Its API (heightAt / normalAt / slopeAt) is a
+ *      contract with five other modules — extend it, never change it.
+ *
+ *   2. THE MESH. Opaque, depth-writing (the one pass that lets a particle
+ *      hide behind a mountain), and now EMISSIVE: a baked per-vertex glow
+ *      concentrates soft internal light along ridgelines and crests, breathing
+ *      slowly, while valley floors and the viewer's foreground stay pressed
+ *      near-black. High contrast is the design: the strongest mesh glow sits
+ *      around 0.30 luminance — the terrain glows, it never blooms (0.62
+ *      threshold). The bright pinpoint energy on top belongs to
+ *      terrainNetwork.ts.
+ *
+ * The compositional guarantees survive the rework untouched, because they are
+ * applied AFTER the noise: the soft saddle keeps the land from rising through
+ * the deck, the foreground cap keeps every near hill under the sightline to
+ * the span, and the authored framing ridges (reduced to accents) still
+ * guarantee the deck exits into mountains and the left flank is never empty.
  */
 
 import * as THREE from "three";
@@ -29,6 +39,12 @@ export interface TerrainHandle {
   mesh: THREE.Mesh;
   /** Bilinear heightfield lookup. Queried 140,000 times during seeding. */
   heightAt(x: number, z: number): number;
+  /**
+   * Height above the locally blurred field — how much of a CREST this point
+   * is. The energy network seeds its density from this, so its light lands on
+   * the same ridges the mesh glow does.
+   */
+  prominenceAt(x: number, z: number): number;
   normalAt(x: number, z: number, out?: THREE.Vector3): THREE.Vector3;
   /** Degrees from horizontal. */
   slopeAt(x: number, z: number): number;
@@ -38,6 +54,8 @@ export interface TerrainHandle {
   setSwarmCount(count: number): void;
   /** Dev only — for sweeping the rim against the colour ratio. */
   setRim(strength: number): void;
+  /** Advances the internal glow's slow breathing. Wall clock. */
+  update(elapsed: number): void;
   dispose(): void;
 }
 
@@ -51,7 +69,7 @@ export interface TerrainHandle {
  * landscape and the camera's framing constraints were verified against it. A
  * landscape that varies per load cannot be composed.
  */
-function hash2(ix: number, iy: number, seed: number): number {
+export function hash2(ix: number, iy: number, seed: number): number {
   let h = (ix * 374761393 + iy * 668265263 + seed * 2246822519) >>> 0;
   h = Math.imul(h ^ (h >>> 13), 1274126177);
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
@@ -59,7 +77,7 @@ function hash2(ix: number, iy: number, seed: number): number {
 
 const smoother = (t: number) => t * t * t * (t * (t * 6 - 15) + 10);
 
-function valueNoise2(x: number, y: number, seed: number): number {
+export function valueNoise2(x: number, y: number, seed: number): number {
   const ix = Math.floor(x);
   const iy = Math.floor(y);
   const fx = x - ix;
@@ -78,43 +96,151 @@ function valueNoise2(x: number, y: number, seed: number): number {
   );
 }
 
+/** Plain fractal sum, normalised to roughly -1..1. The rolling-hill base. */
+function fbm(
+  x: number,
+  z: number,
+  seed: number,
+  freq: number,
+  octaves: number,
+  lacunarity: number,
+  gain: number,
+): number {
+  let sum = 0;
+  let amp = 1;
+  let f = freq;
+  let norm = 0;
+  for (let i = 0; i < octaves; i++) {
+    sum += valueNoise2(x * f, z * f, seed + i * 977) * amp;
+    norm += amp;
+    f *= lacunarity;
+    amp *= gain;
+  }
+  return sum / norm;
+}
+
+/**
+ * Ridged multifractal, 0..1 with sharp crests at 1.
+ *
+ * (1 - |noise|) folds the field so its zero-crossings become CRESTS — long
+ * connected chains rather than isolated bumps, which is the difference between
+ * a mountain RANGE and a field of hills. The octave weighting (each octave
+ * scaled by the crest strength beneath it) puts the fine detail on the peaks
+ * and leaves the valley floors smooth, exactly as erosion does — this is what
+ * "naturally formed over millions of years" looks like in maths.
+ */
+function ridged(
+  x: number,
+  z: number,
+  seed: number,
+  freq: number,
+  octaves: number,
+  lacunarity: number,
+  gain: number,
+  sharpness: number,
+): number {
+  let sum = 0;
+  let amp = 1;
+  let f = freq;
+  let norm = 0;
+  let weight = 1;
+  for (let i = 0; i < octaves; i++) {
+    let r = 1 - Math.abs(valueNoise2(x * f, z * f, seed + i * 1409));
+    r = Math.pow(r, sharpness) * weight;
+    weight = THREE.MathUtils.clamp(r * 1.7, 0, 1);
+    sum += r * amp;
+    norm += amp;
+    f *= lacunarity;
+    amp *= gain;
+  }
+  return sum / norm;
+}
+
+/**
+ * The quiet-region mask, exported so the energy network's density and the
+ * mesh's internal glow are the SAME field — a region that burns on the mesh
+ * is dense with particles, a quiet region is empty of both. Two separate
+ * masks here would visibly disagree within one screenshot.
+ */
+export function glowClusterAt(x: number, z: number): number {
+  const G = TERRAIN.glow;
+  return Math.pow(
+    0.5 + 0.5 * valueNoise2(x * G.clusterFreq, z * G.clusterFreq, TERRAIN.noiseSeed ^ 0x3131),
+    G.clusterPow,
+  );
+}
+
 const _probe = new THREE.Vector3();
 const _tmp = new THREE.Vector3();
 
 /**
- * Five octaves.
+ * THE COMPOSED FIELD. See the config's TERRAIN block for what each layer is;
+ * the assembly order here is: depth ramp → warp → belt-masked ridged ranges
+ * + rolling hills − basins + micro, then the authored framing accents.
  *
- * The fifth is 1.8u at ~29u wavelength — invisible on any surface, and its
- * entire job is SILHOUETTES. A ridgeline built from four octaves is a smooth
- * mathematical curve and it looks like one; the fifth turns it ragged, and
- * ragged edges read as rock.
- *
- * It is the first thing anyone optimising this will drop, because it
- * "contributes almost nothing to the height". It contributes almost nothing to
- * the height and almost everything to the only thing anyone sees.
+ * Everything is a pure function of (x, z) and the fixed seed. No RNG state.
  */
 function noiseHeight(x: number, z: number): number {
-  let h = 0;
-  for (let i = 0; i < TERRAIN.octaves.length; i++) {
-    const [freq, amp] = TERRAIN.octaves[i];
-    h += valueNoise2(x * freq, z * freq, TERRAIN.noiseSeed + i * 977) * amp;
+  const T = TERRAIN;
+  const seed = T.noiseSeed;
+
+  // 0 at the lens, 1 at the horizon, back-loaded.
+  const ramp = THREE.MathUtils.clamp(
+    (T.depthRamp.zNear - z) / (T.depthRamp.zNear - T.depthRamp.zFar),
+    0,
+    1,
+  );
+  const depth = Math.pow(smoother(ramp), T.depthRamp.exponent);
+
+  // Double domain warp. The warped coordinate feeds the RANGES and the belt
+  // mask (so a range and its mask bend together); hills and basins read the
+  // raw coordinate — warping everything with the same field would just be a
+  // change of variables and the lattice would survive it.
+  const w = T.mountains.warp;
+  const wx =
+    x +
+    w.strength * valueNoise2(x * w.freq, z * w.freq, seed ^ 0x1111) +
+    w.strength2 * valueNoise2(x * w.freq2, z * w.freq2, seed ^ 0x1313);
+  const wz =
+    z +
+    w.strength * valueNoise2(x * w.freq, z * w.freq, seed ^ 0x1717) +
+    w.strength2 * valueNoise2(x * w.freq2, z * w.freq2, seed ^ 0x1919);
+
+  // Ranges, gathered into belts.
+  const b = T.mountains.belt;
+  const beltN = 0.5 + 0.5 * valueNoise2(wx * b.freq, wz * b.freq, seed ^ 0x2323);
+  const belt =
+    b.floor + (1 - b.floor) * THREE.MathUtils.smoothstep(beltN, b.low, b.high);
+  const mAmp = THREE.MathUtils.lerp(T.mountains.amp.near, T.mountains.amp.far, depth);
+  const ranges =
+    ridged(
+      wx, wz, seed + 7,
+      T.mountains.freq, T.mountains.octaves, T.mountains.lacunarity,
+      T.mountains.gain, T.mountains.sharpness,
+    ) * mAmp * belt;
+
+  // Rolling hills — the connective tissue between the ranges.
+  const hAmp = THREE.MathUtils.lerp(T.hills.amp.near, T.hills.amp.far, depth);
+  const hills =
+    fbm(x, z, seed + 31, T.hills.freq, T.hills.octaves, T.hills.lacunarity, T.hills.gain) *
+    hAmp;
+
+  // Basins flowing between the ranges.
+  const v = T.valleys;
+  const vN = 0.5 + 0.5 * valueNoise2(x * v.freq + 37.2, z * v.freq - 11.8, seed ^ 0x2f2f);
+  const basins =
+    -v.depth * THREE.MathUtils.smoothstep(vN, v.low, v.high) * (0.35 + 0.65 * depth);
+
+  let h = ranges + hills + basins;
+
+  // Silhouette raggedness.
+  for (let i = 0; i < T.micro.length; i++) {
+    const [f, a] = T.micro[i];
+    h += valueNoise2(x * f, z * f, seed + 977 * (i + 9)) * a;
   }
 
-  // Ruggedness by depth: wild relief where the eye reads silhouettes, calm
-  // ground near the lens. Applied to the NOISE only — the framing ridges
-  // below are compositional absolutes and keep their authored heights.
-  const r = TERRAIN.relief;
-  h *= THREE.MathUtils.lerp(
-    r.far,
-    r.near,
-    THREE.MathUtils.smoothstep(z, r.zFar, r.zNear),
-  );
-
-  // Framing ridges: placed for composition rather than generated. Two
-  // overlapping ridges at different fog depths are what make the right side
-  // feel deep rather than flat. The faint left one is nearly invisible and
-  // gets deleted as "not doing anything" — without it the left third has no
-  // depth information and the scrim reads as a black rectangle.
+  // Framing accents: composition guarantees, not mountains (those are
+  // generated now). The faint ones look like they do nothing — see config.
   for (const ridge of TERRAIN.framingRidges) {
     const dx = x - ridge.centre[0];
     const dz = z - ridge.centre[2];
@@ -171,13 +297,17 @@ function foregroundCap(z: number, h: number): number {
 // ---------------------------------------------------------------------------
 
 const VERT = /* glsl */ `
+attribute vec2 aGlow;
+
 varying vec3 vWorld;
 varying vec3 vNrm;
+varying vec2 vGlow;
 
 void main(){
   vec4 world = modelMatrix * vec4(position, 1.0);
   vWorld = world.xyz;
   vNrm = normalize(mat3(modelMatrix) * normal);
+  vGlow = aGlow;
   gl_Position = projectionMatrix * viewMatrix * world;
 }
 `;
@@ -194,6 +324,12 @@ uniform vec3  uKeyColor;
 uniform float uKeyIntensity;
 uniform vec3  uKeyDir;
 
+uniform float uTime;
+uniform float uBreathe;
+uniform float uGlowStrength;
+uniform vec3  uGlowA;
+uniform vec3  uGlowB;
+
 uniform vec3  uSwarmPos[5];
 uniform float uSwarmIntensity;
 uniform float uSwarmRange;
@@ -208,10 +344,12 @@ uniform float uFogFar;
 
 varying vec3 vWorld;
 varying vec3 vNrm;
+varying vec2 vGlow;
 
 void main(){
   vec3 n = normalize(vNrm);
   vec3 viewDir = normalize(cameraPosition - vWorld);
+  float dist = distance(cameraPosition, vWorld);
 
   vec3 color = uBase;
 
@@ -220,37 +358,40 @@ void main(){
   // the sense that a surface continues into shadow.
   color += uAmbient;
 
-  // Skyglow, not a sun. At 0.16 it produces no visible highlight and no
-  // discernible shadow direction — its job is normal disambiguation, so slopes
-  // facing different ways are marginally different rather than identical.
+  // Skyglow, not a sun. Its job is normal disambiguation, so slopes facing
+  // different ways are marginally different rather than identical.
   color += uKeyColor * uKeyIntensity * max(dot(n, normalize(uKeyDir)), 0.0);
 
-  // The rim term. This is how the mountains are visible at all.
+  // THE INTERNAL GLOW. Baked per-vertex: crest-weighted, cluster-masked,
+  // valley floors excluded (see the bake). Breathes slowly, phase-scattered
+  // so the land never pulses as one. The near field is suppressed in CAMERA
+  // space — whatever the bake says, the ground at the viewer's feet stays
+  // pressed dark and the road remains the foreground's only light.
+  float g = vGlow.x * (0.84 + 0.16 * sin(uTime * uBreathe * 6.2832 + vGlow.y * 6.2832));
+  g *= smoothstep(130.0, 430.0, dist);
+  color += mix(uGlowA, uGlowB, min(g * 1.5, 1.0)) * (g * uGlowStrength);
+
+  // The rim term — how the unlit flanks stay visible at all.
+  //
+  // MASKED BY SLOPE: (1 - |n.y|) is zero on level ground, so the flat plain
+  // seen at grazing incidence never lights into a green blanket — only the
+  // flanks of real relief rim, which is what a night ridgeline actually shows.
   float rim = pow(1.0 - abs(dot(n, viewDir)), uRimPower);
+  rim *= pow(clamp(1.0 - abs(n.y), 0.0, 1.0), 0.9);
+
+  // DISTANT relief catches the sky's green light — the lift rises with
+  // distance so the near plain stays pressed black, and it is DIRECTIONAL:
+  // slopes facing the glow bank in the upper sky glint green, the flanks
+  // turned away stay in shadow — one mountain, both treatments.
+  float farLift = smoothstep(480.0, 1250.0, dist);
+  vec3 glowDir = normalize(vec3(0.35, 0.55, -0.5));
+  float facing = 0.3 + 0.7 * max(dot(n, glowDir), 0.0);
+  rim *= mix(1.0, 3.0 * facing, farLift);
   color += uRim * rim * uRimStrength;
 
-  // Swarm lights — flying particles illuminating the landscape.
-  //
-  // WINDOWED falloff, reaching exactly zero at uSwarmRange. This was previously
-  // an unwindowed 1/(1+d^2), which never reaches zero, and the difference is not
-  // academic: swarm-lit terrain is deep-band BY DEFINITION (the light's own
-  // colour has luminance 0.87), so wherever the tail stays above the band edge,
-  // the terrain is spending the deep budget. Solving 0.87 * falloff * intensity
-  // < 0.058 for the old curve put that boundary at 310u — nearly twice the
-  // nominal 150u and wider than the 325u spacing between lights. Every light
-  // reached every other light's territory: a flat valley-wide wash, measured at
-  // 25 points of deep against a 10-point budget.
-  //
-  // (1 - x^2)^decay keeps the same near-field shape and terminates. Beyond
-  // uSwarmRange a light contributes nothing at all, so the pools stay discrete
-  // and the illumination visibly TRAVELS with the river — which is the entire
-  // reason the effect reads as caused by the particles rather than as a fill
-  // light someone switched on.
-  //
-  // The clamp is a ceiling for the rare close pass, not the normal case. When
-  // intensity sits well above it, a light saturates across most of its footprint
-  // and the clamp stops limiting a hotspot and starts PRODUCING a flat disc of
-  // constant brightness — the very spotlight-on-a-ridge it exists to prevent.
+  // Swarm lights — the flying river illuminating the landscape it passes.
+  // WINDOWED falloff reaching exactly zero at uSwarmRange, so the pools stay
+  // discrete and the light visibly travels. See config for the full history.
   float swarm = 0.0;
   for (int i = 0; i < 5; i++) {
     if (i >= uSwarmCount) break;
@@ -260,13 +401,20 @@ void main(){
   color += uSwarmColor * min(swarm * uSwarmIntensity, uSwarmClamp);
 
   // Linear fog, tinted to the sky's horizon band so distant terrain dissolves
-  // rather than ending at an edge. Opaque geometry mixes TOWARD the fog colour;
-  // additive geometry must not, and does not — see the particle shader.
-  float fog = clamp(
-    (distance(cameraPosition, vWorld) - uFogNear) / (uFogFar - uFogNear),
-    0.0, 1.0
-  );
+  // rather than ending at an edge. SOFTENED against the old curve (pow 1.35):
+  // the far ranges must fade toward darkness while KEEPING their silhouettes —
+  // atmospheric perspective, not erasure.
+  float fog = clamp((dist - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0);
+  fog = pow(fog, 1.35);
   color = mix(color, uFogColor, fog);
+
+  // THE SILHOUETTE FLOOR, applied AFTER the fog on purpose. At 2,000u the
+  // fog has taken ~90% of everything, which is how the far giants vanished
+  // entirely (they are why the fog curve alone cannot deliver "fades into
+  // darkness while MAINTAINING visible silhouettes"). Rim light is edge-only,
+  // so letting a fraction of it through the fog draws faint green crest
+  // lines on the horizon ranges without lifting their faces out of the dark.
+  color += uRim * rim * uRimStrength * 0.35 * smoothstep(1100.0, 1900.0, dist);
 
   gl_FragColor = vec4(color, 1.0);
 }
@@ -294,9 +442,9 @@ export function createTerrain(tier: Tier): TerrainHandle {
 
   /**
    * The heightfield is cached so heightAt / normalAt / slopeAt are direct
-   * lookups. Re-running five octaves plus a nearestU search 140,000 times during
-   * seeding costs roughly 400ms and shows up as a visible hitch before the scene
-   * starts; sampling this costs about 6ms.
+   * lookups. Re-running the composed field plus a nearestU search 140,000
+   * times during seeding costs the better part of a second and shows up as a
+   * visible hitch before the scene starts; sampling this costs about 6ms.
    */
   const field = new Float32Array(segments * segments);
 
@@ -315,16 +463,70 @@ export function createTerrain(tier: Tier): TerrainHandle {
   pos.needsUpdate = true;
   geometry.computeVertexNormals();
 
+  /**
+   * THE PROMINENCE MAP: the field minus a blurred copy of itself. Positive
+   * where a point stands proud of its neighbourhood — ridgelines, hilltops,
+   * peaks — which is exactly where the brief accumulates the energy. A
+   * separable box blur, radius 5 cells (~35u): cheap, and the scale that
+   * separates "a ridge" from "a mountain being generally high".
+   */
+  const R = 5;
+  const blurTmp = new Float32Array(field.length);
+  const blurred = new Float32Array(field.length);
+  const clampI = (v: number) => THREE.MathUtils.clamp(v, 0, segments - 1);
+  for (let j = 0; j < segments; j++) {
+    for (let i = 0; i < segments; i++) {
+      let s = 0;
+      for (let k = -R; k <= R; k++) s += field[j * segments + clampI(i + k)];
+      blurTmp[j * segments + i] = s / (2 * R + 1);
+    }
+  }
+  for (let j = 0; j < segments; j++) {
+    for (let i = 0; i < segments; i++) {
+      let s = 0;
+      for (let k = -R; k <= R; k++) s += blurTmp[clampI(j + k) * segments + i];
+      blurred[j * segments + i] = s / (2 * R + 1);
+    }
+  }
+  const prominence = new Float32Array(field.length);
+  for (let i = 0; i < field.length; i++) prominence[i] = field[i] - blurred[i];
+
+  /**
+   * THE BAKED GLOW — (intensity, phase) per vertex. Crest-led, elevation-
+   * assisted, cluster-masked: ridges burn, high ground glows faintly, valley
+   * floors and the quiet regions stay black. Never uniform by construction.
+   */
+  const G = TERRAIN.glow;
+  const aGlow = new Float32Array(segments * segments * 2);
+  for (let j = 0; j < segments; j++) {
+    for (let i = 0; i < segments; i++) {
+      const idx = j * segments + i;
+      const x = pos.getX(idx);
+      const z = pos.getZ(idx);
+      const h = field[idx];
+      const crest = THREE.MathUtils.clamp(prominence[idx] / G.crestNorm, 0, 1);
+      const elev = THREE.MathUtils.smoothstep(h, G.elevLow, G.elevHigh);
+      const cluster = glowClusterAt(x, z);
+      // Crest-dominant on purpose (probe round 4): with more elevation term
+      // the whole face of a tall mountain glowed uniformly — the reference
+      // keeps faces DARK and spends the light on crests and ridgelines.
+      aGlow[idx * 2] =
+        (0.8 * crest + 0.2 * elev) * (0.25 + 0.75 * cluster);
+      aGlow[idx * 2 + 1] = hash2(i, j, TERRAIN.noiseSeed ^ 0x3737);
+    }
+  }
+  geometry.setAttribute("aGlow", new THREE.BufferAttribute(aGlow, 2));
+
   const cellX = width / (segments - 1);
   const cellZ = depth / (segments - 1);
 
-  const sample = (i: number, j: number) =>
-    field[
+  const sampleField = (arr: Float32Array, i: number, j: number) =>
+    arr[
       THREE.MathUtils.clamp(j, 0, segments - 1) * segments +
         THREE.MathUtils.clamp(i, 0, segments - 1)
     ];
 
-  function heightAt(x: number, z: number): number {
+  const bilinear = (arr: Float32Array, x: number, z: number): number => {
     const fx = (x - WORLD.bounds.minX) / cellX;
     const fz = (z - WORLD.bounds.minZ) / cellZ;
     const i = Math.floor(fx);
@@ -333,10 +535,13 @@ export function createTerrain(tier: Tier): TerrainHandle {
     const tz = fz - j;
 
     return (
-      (sample(i, j) * (1 - tx) + sample(i + 1, j) * tx) * (1 - tz) +
-      (sample(i, j + 1) * (1 - tx) + sample(i + 1, j + 1) * tx) * tz
+      (sampleField(arr, i, j) * (1 - tx) + sampleField(arr, i + 1, j) * tx) * (1 - tz) +
+      (sampleField(arr, i, j + 1) * (1 - tx) + sampleField(arr, i + 1, j + 1) * tx) * tz
     );
-  }
+  };
+
+  const heightAt = (x: number, z: number) => bilinear(field, x, z);
+  const prominenceAt = (x: number, z: number) => bilinear(prominence, x, z);
 
   function normalAt(x: number, z: number, out = new THREE.Vector3()) {
     const e = cellX;
@@ -363,29 +568,16 @@ export function createTerrain(tier: Tier): TerrainHandle {
     fragmentShader: FRAG,
     uniforms: {
       /**
-       * --void, the darkest token, not --soil.
-       *
-       * The terrain's unlit floor has to sit clear of the near-black band edge
-       * (0.058) with room for the ambient and key terms on top, or every visible
-       * slope crosses it and the landscape alone consumes the whole deep-green
-       * budget. Isolating the elements measured exactly that: terrain 25 points
-       * of deep against the particles' 0.6.
-       *
-       *   --soil  0.0580  ON the edge; ambient alone tips it over
-       *   --ink   0.0390  + ambient 0.015 = 0.054, key takes it to 0.074 — over
-       *   --void  0.0247  + ambient 0.005 = 0.030, key takes it to 0.050 — under
-       *
-       * Making the terrain indistinguishable from the page background is not a
-       * loss: its shape is read from the rim term, which is unaffected.
+       * --void, the darkest token, not --soil. The unlit floor must sit clear
+       * of the near-black band edge with room for ambient and key on top —
+       * the landscape's SHAPE is read from the rim and the internal glow,
+       * which are unaffected. The contrast the round-3 brief demands comes
+       * from the glow rising out of this floor, not from lifting the floor.
        */
       uBase: { value: new THREE.Color(PALETTE.void) },
       uRim: { value: new THREE.Color(PALETTE.rim) },
       uRimStrength: { value: TERRAIN.material.rimStrength },
       uRimPower: { value: TERRAIN.material.rimPower },
-      // Ambient exists only so surfaces facing away from the skyglow are not
-      // mathematically zero — pure black regions clip once grain and bloom are
-      // applied on top. It must not be large enough to lift the floor across the
-      // band edge on its own.
       uAmbient: {
         value: new THREE.Color(PALETTE.moss).multiplyScalar(
           LIGHTING.ambient.intensity * 0.12,
@@ -395,6 +587,12 @@ export function createTerrain(tier: Tier): TerrainHandle {
       uKeyIntensity: { value: LIGHTING.key.intensity },
       uKeyDir: { value: new THREE.Vector3(...LIGHTING.key.direction) },
 
+      uTime: { value: 0 },
+      uBreathe: { value: TERRAIN.glow.breatheHz },
+      uGlowStrength: { value: TERRAIN.glow.strength },
+      uGlowA: { value: new THREE.Color(TERRAIN.glow.colorA) },
+      uGlowB: { value: new THREE.Color(TERRAIN.glow.colorB) },
+
       uSwarmPos: { value: swarmPos },
       uSwarmIntensity: { value: 0 },
       uSwarmRange: { value: LIGHTING.swarmLights.range },
@@ -403,7 +601,10 @@ export function createTerrain(tier: Tier): TerrainHandle {
       uSwarmColor: { value: new THREE.Color(PALETTE.limeBright) },
       uSwarmCount: { value: PERF.swarmLightsByTier[tier] },
 
-      uFogColor: { value: new THREE.Color(PALETTE.ink) },
+      // NOT --ink (world-polish pass): the terrain dissolves toward a
+      // green-black, not the sky's blue-black, so the far ranges melt into
+      // the nebula's atmosphere instead of reading as cut-outs against it.
+      uFogColor: { value: new THREE.Color(TERRAIN.material.horizonFog) },
       uFogNear: { value: WORLD.fogNear },
       uFogFar: { value: WORLD.fogFar },
     },
@@ -420,6 +621,7 @@ export function createTerrain(tier: Tier): TerrainHandle {
   return {
     mesh,
     heightAt,
+    prominenceAt,
     normalAt,
     slopeAt,
     setRim(strength: number) {
@@ -433,6 +635,9 @@ export function createTerrain(tier: Tier): TerrainHandle {
         if (positions[i]) swarmPos[i].copy(positions[i]);
       }
       material.uniforms.uSwarmIntensity.value = intensity;
+    },
+    update(elapsed: number) {
+      material.uniforms.uTime.value = elapsed;
     },
     dispose() {
       geometry.dispose();

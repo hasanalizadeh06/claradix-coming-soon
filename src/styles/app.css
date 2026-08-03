@@ -499,6 +499,68 @@ input {
  * Subscribe
  * ----------------------------------------------------------------------- */
 
+/*
+ * The WhatsApp CTA — the e-mail form's exact footprint (same max-width, same
+ * pill, same left padding, same right-side circular action), so the layout
+ * reads identically; only the promise changed from "we'll write to you" to
+ * "write to us, one tap".
+ */
+.whatsapp-cta {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  max-width: 30rem;
+  margin: 0 0 var(--rhythm-lg);
+  padding: 0.4rem 0.4rem 0.4rem 1.25rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  background: var(--field-bg);
+  color: var(--text-secondary);
+  text-decoration: none;
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out);
+}
+
+.whatsapp-cta:hover,
+.whatsapp-cta:focus-visible {
+  border-color: var(--border-accent);
+  box-shadow:
+    0 0 0 1px rgba(124, 252, 0, 0.2),
+    0 0 32px rgba(124, 252, 0, 0.12);
+  outline: none;
+}
+
+.whatsapp-cta-mark {
+  flex: 0 0 auto;
+  color: var(--green-500);
+}
+
+.whatsapp-cta-label {
+  flex: 1 1 auto;
+  padding: 0.7rem 0;
+  font-size: var(--step-0);
+  font-weight: 400;
+  letter-spacing: 0.01em;
+  color: var(--text-primary);
+}
+
+.whatsapp-cta-arrow {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 2.9rem;
+  height: 2.9rem;
+  border-radius: 50%;
+  background: var(--green-500);
+  color: var(--ink-900);
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+
+.whatsapp-cta:hover .whatsapp-cta-arrow {
+  transform: translateX(3px);
+}
+
 .subscribe {
   margin: 0 0 var(--rhythm-lg);
   max-width: 30rem;

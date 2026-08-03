@@ -43,21 +43,38 @@ const UI_EDGE = Number(process.env.UI_EDGE ?? 0.45);
  * the rule's real job.
  */
 /**
- * RE-BASED AGAIN (2026-08-01) after the client-driven composition round: the
- * camera now pitches DOWN into the valley (far more ground in frame), the
- * terrain carries 1.35× relief with a transverse canyon, and the sky holds an
- * aurora ribbon — the world half is mid-tone-dominated by design. The build's
- * ARC is what these targets protect now: the accent share must climb from
- * ~0 at dormant to ~8% at the completed bridge and hold.
+ * RE-BASED AGAIN (2026-08-03) for the reference-image round: the camera now
+ * stands ON the road line (the highway rises from bottom-centre to the deck),
+ * the terrain rim light is slope-masked so flat ground reads near-black, the
+ * mist was cut, and the sky swapped its aurora for a sculptural cloudscape.
+ * The world half is therefore MUCH darker at rest — dormant sits at ~67%
+ * near-black — and the accent lives almost entirely in the bridge + road
+ * column. The arc these targets protect: accent ~0 at dormant, climbing
+ * through the build to ~13% at completion, relaxing slightly at the settle.
+ *
+ * `tol` overrides the global tolerance for rows that legitimately vary
+ * between runs: awakening (t=2.0) catches the orb tour mid-flight, and the
+ * comet trail + meteor state on the unwrapped clock differ per run under
+ * SwiftShader — two clean runs measured 4 points apart in near-black.
+ */
+/**
+ * RE-BASED (2026-08-03, round 3): the sky is now a volumetric NEBULA —
+ * its lit membranes and plasma veins sit inside the accent band, so every
+ * act carries a floor of ~3.5 accent points from the sky alone. The arc
+ * still climbs: accent ~3.5% at dormant → ~16.5% at completion.
  */
 const CAPTURES = [
-  { name: "dormant", t: 0.6, black: 0.175, accent: 0.02 },
-  { name: "awakening", t: 2.0, black: 0.14, accent: 0.06 },
-  { name: "glide", t: 4.1, black: 0.185, accent: 0.02 },
-  { name: "assembly-early", t: 6.4, black: 0.18, accent: 0.035 },
-  { name: "assembly-late", t: 10.5, black: 0.165, accent: 0.085 },
-  { name: "complete", t: 13.9, black: 0.17, accent: 0.09 },
-  { name: "settled", t: 16.5, black: 0.165, accent: 0.085 },
+  /** Dormant is nearly ALL sky (no bridge yet), and the nebula drifts on
+   *  the wall clock — its membrane positions at capture time swing the
+   *  near-black share ±3 points between clean runs. Wider tol, like
+   *  awakening. */
+  { name: "dormant", t: 0.6, black: 0.575, accent: 0.035, tol: 0.06 },
+  { name: "awakening", t: 2.0, black: 0.19, accent: 0.07, tol: 0.05 },
+  { name: "glide", t: 4.1, black: 0.19, accent: 0.035 },
+  { name: "assembly-early", t: 6.4, black: 0.185, accent: 0.05 },
+  { name: "assembly-late", t: 10.5, black: 0.145, accent: 0.12 },
+  { name: "complete", t: 13.9, black: 0.145, accent: 0.165 },
+  { name: "settled", t: 16.5, black: 0.205, accent: 0.135 },
 ];
 
 const TOLERANCE = 0.03;
@@ -285,6 +302,21 @@ page.on("console", (m) => {
 await page.goto(`http://localhost:${PORT}/`, { waitUntil: "load", timeout: 60000 });
 
 /**
+ * FREEZE THE GOVERNOR before it can measure anything. Under SwiftShader every
+ * frame is a bad frame, so a seven-capture session used to degrade five rungs
+ * deep by the later captures — and the check then measured the degradation
+ * ladder's output (no grain, shrunken bloom) instead of the design's. The
+ * targets below describe the FULL-QUALITY frame; a real visitor's device
+ * either holds it or is honestly degraded, but a measurement must not depend
+ * on how fast the measuring machine happens to be.
+ */
+await page.waitForFunction(() => typeof window.__perfFreeze === "function", null, {
+  timeout: 120000,
+  polling: 100,
+});
+await page.evaluate(() => window.__perfFreeze(true));
+
+/**
  * Wait for the scene to be RUNNING AND AT FULL BRIGHTNESS. Not for a duration.
  *
  * Three different signals here, and only the last one is correct:
@@ -331,7 +363,23 @@ console.log("  " + "-".repeat(74));
 
 for (const cap of CAPTURES) {
   await page.evaluate((t) => window.__claradixSeek?.(t), cap.t);
-  await page.waitForTimeout(420);
+  /**
+   * Wait in FRAMES, not milliseconds. The trail accumulator carries 26
+   * frames of history, so after a seek the previous state's streaks decay
+   * over the next ~26 rendered frames — and under SwiftShader a wall-clock
+   * wait covers a different number of frames on every machine. 34 real
+   * frames flushes the buffer completely and one more presents the settled
+   * frame; the same wait was measuring 4-40 points of run-to-run drift as
+   * "the scene's colour" before it was counted in the right unit.
+   */
+  await page.evaluate(
+    () =>
+      new Promise((resolve) => {
+        let n = 0;
+        const step = () => (++n >= 35 ? resolve(undefined) : requestAnimationFrame(step));
+        requestAnimationFrame(step);
+      }),
+  );
 
   // The UI's entrance runs on WALL time, not scene time, and the countdown
   // dial sits inside the measured world half — so a capture taken while it
@@ -355,7 +403,8 @@ for (const cap of CAPTURES) {
 
   const blackOff = Math.abs(a.black - cap.black);
   const accentOff = Math.abs(a.accent - cap.accent);
-  const bad = blackOff > TOLERANCE || accentOff > TOLERANCE;
+  const tol = cap.tol ?? TOLERANCE;
+  const bad = blackOff > tol || accentOff > tol;
   if (bad) failures += 1;
 
   console.log(

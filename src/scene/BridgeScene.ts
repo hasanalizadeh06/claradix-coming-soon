@@ -48,11 +48,13 @@ import {
 } from "@/lib/config";
 import { centreline } from "./centreline";
 import { buildTargets } from "./bridgeTargets";
+import { createBridgeFibers } from "./elements/bridgeFibers";
 import { createGroundGlow } from "./elements/groundGlow";
 import { createGroundStreams } from "./elements/groundStreams";
 import { createMist } from "./elements/mist";
 import { createSky } from "./elements/sky";
 import { createTerrain } from "./elements/terrain";
+import { createTerrainNetwork } from "./elements/terrainNetwork";
 import { TRAIL_LAYER, createParticles } from "./elements/particles";
 
 const _tmp = new THREE.Vector3();
@@ -199,6 +201,13 @@ export function createBridgeScene(ctx: SceneContext): SceneHandle {
   streams.setLoop(SCENE.loop);
   scene.add(streams.points);
 
+  // The terrain's own luminous surface — energy lines, nodes and motes
+  // marched across the heightfield (client, 2026-08-03 round 3). After the
+  // terrain, whose baked field it samples and whose depth buffer hides its
+  // lines behind ridges.
+  const network = createTerrainNetwork(terrain, tier);
+  scene.add(network.group);
+
   // --- the bridge, as a list of positions ---------------------------------
   const nominal = PARTICLES.countByTier[tier];
   const targets = buildTargets(nominal, terrain.heightAt);
@@ -206,6 +215,13 @@ export function createBridgeScene(ctx: SceneContext): SceneHandle {
   // --- the particles ------------------------------------------------------
   const particles = createParticles(targets, terrain);
   scene.add(particles.points);
+
+  // --- the filaments: the bridge's continuous material (pass 2) -----------
+  // After the terrain (tower filaments sample the ground) and alongside the
+  // particles whose choreography they shadow.
+  const fibers = createBridgeFibers(terrain);
+  fibers.setLoop(SCENE.loop);
+  scene.add(fibers.lines);
 
   // --- camera -------------------------------------------------------------
   //
@@ -271,6 +287,12 @@ export function createBridgeScene(ctx: SceneContext): SceneHandle {
       streams: (on) => {
         streams.points.visible = on;
       },
+      network: (on) => {
+        network.group.visible = on;
+      },
+      fibers: (on) => {
+        fibers.lines.visible = on;
+      },
       /**
        * The capture harness needs this: under SwiftShader the trail buffer's
        * 26 frames span SECONDS of scene time, and every moving light smears
@@ -287,10 +309,20 @@ export function createBridgeScene(ctx: SceneContext): SceneHandle {
         particles.material.uniforms.uLoop.value = on ? 1 : 0;
         groundGlow.setLoop(on);
         streams.setLoop(on);
+        fibers.setLoop(on);
       },
     };
     (window as unknown as { __rim?: (v: number) => void }).__rim = (v) =>
       terrain.setRim(v);
+    // Heightfield probe — answers "is the mountain there or is it only
+    // invisible" without a rebuild, which is the terrain analogue of
+    // __targets for the bridge.
+    (window as unknown as {
+      __terrainAt?: (x: number, z: number) => { h: number; prom: number };
+    }).__terrainAt = (x, z) => ({
+      h: Math.round(terrain.heightAt(x, z)),
+      prom: Math.round(terrain.prominenceAt(x, z) * 10) / 10,
+    });
     // The vertex shader is assembled from config at runtime, so when the
     // particles stop appearing the generated source is the only place the
     // answer can be. Reading the TypeScript that produced it is not the same
@@ -460,12 +492,14 @@ export function createBridgeScene(ctx: SceneContext): SceneHandle {
 
       // --- the completion pulse -------------------------------------------
       //
-      // ONE band of brightness travelling far → near, the direction the build
-      // ran — RECURRING every ten seconds while the bridge stands complete
-      // (client, 2026-08-01). A pure function of the clock, no fired-flags:
-      // seeking lands on the exact frame, and in loop mode the pulse
-      // schedule wraps with everything else. The stillness gate keeps it out
-      // of Act IV, where a proud pulse on a dissolving bridge would be a lie.
+      // ONE band of brightness travelling near → far — away from the camera
+      // toward the mountains, the direction the round-5 build runs (client,
+      // 2026-08-03: the white shimmer must leave the viewer, not arrive at
+      // them) — RECURRING every ten seconds while the bridge stands
+      // complete. A pure function of the clock, no fired-flags: seeking
+      // lands on the exact frame, and in loop mode the pulse schedule wraps
+      // with everything else. The stillness gate keeps it out of Act IV,
+      // where a proud pulse on a dissolving bridge would be a lie.
       {
         const firstPulse =
           TIMELINE.phase4_completionStart + COMPLETION_PULSE.startDelay;
@@ -474,9 +508,12 @@ export function createBridgeScene(ctx: SceneContext): SceneHandle {
           const k =
             ((t - firstPulse) % COMPLETION_PULSE.repeatEvery) /
             COMPLETION_PULSE.duration;
-          pulseU = k <= 1 ? 1 - k : -1;
+          pulseU = k <= 1 ? k : -1;
         }
         particles.material.uniforms.uPulseU.value = pulseU;
+        // The same band rides the filament material, so the shimmer is one
+        // event crossing one structure, not two systems coincidentally lit.
+        fibers.setPulseU(pulseU);
       }
 
       // --- the cursor, resolved into the world ----------------------------
@@ -634,7 +671,10 @@ export function createBridgeScene(ctx: SceneContext): SceneHandle {
       // the camera's own matrices, so updating it earlier would paint this
       // frame's sky with last frame's view.
       mist.update(frame.elapsed);
+      terrain.update(frame.elapsed);
+      network.update(frame.elapsed);
       groundGlow.update(t);
+      fibers.update(t);
       // Existence, the falls and the pre-wrap fade are all derived per-packet
       // inside the traffic shader from the deck's own schedule — the global
       // intensity is only a master fader.
@@ -664,6 +704,7 @@ export function createBridgeScene(ctx: SceneContext): SceneHandle {
       const scale = THREE.MathUtils.clamp(height / 900, 0.55, 1.5);
       particles.material.uniforms.uPointScale.value = scale;
       streams.setPointScale(scale);
+      network.setPointScale(scale);
       void width;
     },
 
@@ -674,14 +715,18 @@ export function createBridgeScene(ctx: SceneContext): SceneHandle {
         mist.mesh,
         particles.points,
         streams.points,
+        network.group,
         groundGlow.mesh,
+        fibers.lines,
       );
       sky.dispose();
       terrain.dispose();
       mist.dispose();
       particles.dispose();
       streams.dispose();
+      network.dispose();
       groundGlow.dispose();
+      fibers.dispose();
     },
   };
 }

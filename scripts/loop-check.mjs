@@ -141,12 +141,25 @@ page.on("console", (m) => {
 await page.goto(`http://localhost:${PORT}/`, { waitUntil: "load", timeout: 60000 });
 await page.waitForTimeout(3000);
 
+// The DOM UI is hidden for every capture. This check's claim is about the
+// PARTICLE SYSTEM's repeatability, and the UI runs on the WALL clock — the
+// countdown ticks once a second and the reveal animation plays exactly once —
+// so with the redesign's much darker bridge the dial's bright digits (which
+// sit inside the measured bridge band) became a larger term than the bridge
+// itself. The text scrim stays: it is a static constant, hidden or shown.
+await page.addStyleTag({ content: ".page { visibility: hidden !important; }" });
+
 await page.evaluate(() => window.__scene?.loop(true));
 await page.waitForTimeout(300);
 
 const shoot = async (t) => {
   await page.evaluate((tt) => window.__claradixSeek?.(tt), t);
-  await page.waitForTimeout(420);
+  // 900ms, up from 420: the trail accumulator carries 26 frames of history,
+  // and under SwiftShader a shorter settle leaves the previous seek's bright
+  // objects still decaying in the buffer — which reads as cycle drift when
+  // the compared frames arrived via different seek histories. The noise
+  // floor and the cycle comparison get the same settle either way.
+  await page.waitForTimeout(900);
   return decodePng(await page.screenshot());
 };
 

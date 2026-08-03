@@ -76,12 +76,7 @@ precision highp float;
 uniform vec3  uGradientColor[4];
 uniform float uGradientY[4];
 
-uniform vec3  uNebulaColor;
-uniform float uNebulaOpacity;
-uniform vec4  uNebulaExtent;      // xMin, xMax, yMin, yMax — screen, y from top
-uniform vec3  uNebulaOctaves[3];  // frequency, amplitude, unused
-uniform vec2  uNebulaDrift;
-uniform float uNebulaTurbulence;
+uniform vec3  uNebulaGlow;
 
 uniform vec2  uStarGrid;
 uniform float uStarProbability;
@@ -90,10 +85,6 @@ uniform vec2  uStarBrightness;
 uniform vec2  uStarFalloff;
 uniform vec2  uStarPeriod;
 uniform float uStarTwinkle;
-
-uniform vec3  uAuroraLow;
-uniform vec3  uAuroraHigh;
-uniform float uAuroraIntensity;
 
 uniform mat4  uInvViewProj;
 uniform vec3  uCameraPos;
@@ -134,6 +125,18 @@ float vnoise(vec2 p) {
   return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
 }
 
+/** Four octaves — enough for a cloud to have a silhouette AND a texture. */
+float fbm(vec2 p) {
+  float v = 0.0;
+  float a = 0.54;
+  for (int i = 0; i < 4; i++) {
+    v += vnoise(p) * a;
+    p = p * 2.13 + 17.7;
+    a *= 0.5;
+  }
+  return v;
+}
+
 void main() {
   // --- the view ray ------------------------------------------------------
   vec4 far = uInvViewProj * vec4(vNdc, 1.0, 1.0);
@@ -156,79 +159,124 @@ void main() {
   vec2 uv = vNdc * 0.5 + 0.5;
   vec2 sxy = vec2(uv.x, 1.0 - uv.y);
 
-  // --- nebula ------------------------------------------------------------
+  // --- THE NEBULA ----------------------------------------------------------
   //
-  // Three octaves of scrolling value noise, masked to the upper right —
-  // diagonally opposite the headline, and directly behind where the far end of
-  // the bridge assembles.
+  // A volumetric deep-space plasma formation — NOT clouds, NOT fog. Four
+  // cooperating systems:
   //
-  // The drift is far too slow to see. That is the point: it exists so no two
-  // frames are identical, which the eye registers as air even when it cannot
-  // name what it registered. The turbulence term evolves the internal structure
-  // as well, so over a long session the shape genuinely changes rather than
-  // sliding past unchanged.
-  vec2 flow = uNebulaDrift * uTime * 0.004;
-  float turb = sin(uTime / uNebulaTurbulence * 6.2831853) * 0.35;
-
-  float n = 0.0;
-  float amp = 0.0;
-  for (int i = 0; i < 3; i++) {
-    vec2 p = sxy * uNebulaOctaves[i].x * 3.4 + flow * uNebulaOctaves[i].x;
-    p += turb * float(i) * 0.5;
-    n += vnoise(p) * uNebulaOctaves[i].y;
-    amp += uNebulaOctaves[i].y;
-  }
-  n /= amp;
-
-  float maskX = smoothstep(uNebulaExtent.x, uNebulaExtent.x + 0.22, sxy.x)
-              * (1.0 - smoothstep(uNebulaExtent.y - 0.06, uNebulaExtent.y, sxy.x));
-  float maskY = (1.0 - smoothstep(uNebulaExtent.w - 0.20, uNebulaExtent.w, sxy.y));
-  float mask = maskX * maskY;
-
-  // Squared, so the cloud has a dense core and a long soft edge rather than a
-  // uniform slab with a feathered border.
-  float density = n * n * mask;
-  color += uNebulaColor * (density * uNebulaOpacity);
-
-  // --- aurora --------------------------------------------------------------
+  //   WARP    two nested domain warps bend every coordinate before any
+  //           field is read, so no Perlin patterning survives; the same
+  //           warp feeds every layer, which is what keeps membranes,
+  //           veins and energy physically coherent with each other
+  //   BODY    two stacked translucent sheets — a coarse back sheet seen
+  //           THROUGH the thin regions of a finer front sheet — plus a
+  //           high-frequency micro field that shreds every edge into
+  //           filaments instead of letting it end in an outline
+  //   ENERGY  a slow internal plasma field. Light originates INSIDE:
+  //           it escapes only through translucent mid-density membranes
+  //           and thin ridged fracture VEINS; fully thick regions occlude
+  //           their own light and stay near-black. No rims, no edge glow.
+  //   FRAMING a center-open mask — the formation wraps the frame's edges
+  //           and corners and leaves negative space over the bridge.
   //
-  // ONE serpentine ribbon, not a wash (client direction, 2026-08-01): the
-  // classic polar-light anatomy — a narrow band ZIGZAGGING across the sky,
-  // with a crisp bright lower edge and wispy rays feathering upward. Small,
-  // vivid, and visibly alive: the folds travel and the ray striations
-  // flicker on the wall clock.
+  // cloudBody (opacity: stars and meteors dim behind it) and glowField
+  // (energy: the painted ranges borrow it for crest light) escape the
+  // block, so the rest of the sky keeps one physical story.
+  float cloudBody = 0.0;
+  float glowField = 0.0;
   {
-    float ax = sxy.x;
-    float t1 = uTime * 0.055;
+    float az = sxy.x;
+    float e = max(dir.y, 0.0);
 
-    // The centreline: elevation as a function of azimuth. Two counter-
-    // travelling folds plus a noise wander — the serpent's zigzag. The
-    // frequencies put 3–4 visible folds across the ribbon's extent; lower
-    // ones read as a single smooth arch, which is exactly not the point.
-    float zig = sin(ax * 17.0 + t1 * 2.1) * 0.5
-              + sin(ax * 7.3 - t1 * 1.4 + 1.7) * 0.5;
-    zig += (vnoise(vec2(ax * 3.4 + t1 * 0.5, 8.2)) - 0.5) * 1.2;
-    float eC = 0.30 + zig * 0.08;
+    // Nothing floats below the horizon haze.
+    float skyMask = smoothstep(0.004, 0.045, e);
 
-    // Real aurora reads: sharp below the band, long soft rays above it.
-    float d = elev - eC;
-    float band = d < 0.0
-      ? exp(-pow(-d * 34.0, 1.7))
-      : exp(-d * 9.0);
+    // Center-open framing, aspect-corrected so the negative space is a
+    // circle of screen, not of UV.
+    float aspect = uResolution.x / max(uResolution.y, 1.0);
+    vec2 fc = (sxy - vec2(0.52, 0.42)) * vec2(aspect, 1.0);
+    float framing = 0.3 + 0.7 * smoothstep(0.16, 0.62, length(fc));
+    // The far corners carry MORE than the edge average — the formation
+    // visibly wraps the frame instead of merely avoiding the middle.
+    framing *= 1.0 + 0.4 * smoothstep(0.55, 0.95, length(fc));
 
-    // Vertical ray striations scrolling along the ribbon — the flicker.
-    band *= 0.55 + 0.45 * vnoise(vec2(ax * 26.0 + zig * 2.0, uTime * 0.13));
+    // Anisotropic base coordinates — the formation stretches along the
+    // horizon, as a structure hundreds of kilometres wide would.
+    vec2 P = vec2(az * 3.1, e * 5.0);
 
-    // One ribbon with soft ends, biased away from the text column.
-    float extent = smoothstep(0.3, 0.48, ax) * (1.0 - smoothstep(0.93, 1.02, ax));
-    // Slow breathing, so even a still glance reads intensity in motion.
-    float breathe = 0.72 + 0.28 * sin(uTime * 0.23 + 1.3);
+    // GLACIAL drift, three tempos. The nebula does not blow anywhere; its
+    // warp fields migrate against each other so the interior slowly folds.
+    vec2 t1 = vec2(uTime * ${f(SKY.nebula.driftSpeed)},
+                   -uTime * ${f(SKY.nebula.driftSpeed * 0.6)});
+    vec2 t2 = vec2(-uTime * ${f(SKY.nebula.driftSpeed * 0.8)},
+                   uTime * ${f(SKY.nebula.driftSpeed * 0.45)});
 
-    // Clamped under the bloom threshold — the sky must never glow.
-    float aur = min(band * extent * breathe, 0.85);
-    vec3 aurCol = mix(uAuroraLow, uAuroraHigh,
-                      clamp(d * 6.0 + 0.35, 0.0, 1.0));
-    color += aurCol * aur * uAuroraIntensity;
+    // The double warp.
+    vec2 q = vec2(fbm(P + t1), fbm(P + vec2(5.2, 1.3) + t2));
+    vec2 r = vec2(fbm(P + 2.4 * q + vec2(1.7, 9.2)),
+                  fbm(P + 2.4 * q + vec2(8.3, 2.8)));
+
+    // Micro-detail — the highest frequency in the sky. Multiplied into
+    // every density threshold below, so silhouettes dissolve into finer
+    // and finer tears instead of ending.
+    float micro = fbm(P * 8.0 + 3.0 * r + t2 * 2.0);
+
+    // The two sheets. The back is coarser and offset; the front is finer
+    // and more torn. Their thresholds ride the micro field.
+    float dBack = fbm(P * 0.55 + 1.7 * r + vec2(11.0, 3.0));
+    float dFront = fbm(P * 1.35 + 2.2 * r);
+    float backBody = smoothstep(0.27, 0.65, dBack * (0.78 + 0.44 * micro));
+    float frontBody = smoothstep(0.31, 0.71, dFront * (0.7 + 0.56 * micro));
+
+    float density = clamp(backBody * 0.6 + frontBody * 0.8, 0.0, 1.0)
+                  * skyMask * framing;
+    cloudBody = density;
+
+    // The internal plasma. Slower than everything else (t1 * 0.5): light
+    // MIGRATES through the formation rather than flickering.
+    float en = fbm(P * 0.8 + 1.6 * q + vec2(4.0, 7.0) + t1 * 0.5);
+    float energy = pow(smoothstep(0.42, 0.78, en), 1.7);
+    glowField = energy;
+
+    // Fracture veins: a ridged fold of the warped field, raised to a high
+    // power — thin cracks where concentrated plasma shows through.
+    float vein = 1.0 - abs(2.0 * fbm(P * 2.6 + 2.8 * r + vec2(9.0, 5.0)) - 1.0);
+    vein = pow(vein, 6.0);
+
+    // The translucent membrane window: emission escapes where the body is
+    // present but thin-to-mid; a fully thick core occludes its own light.
+    float membrane = smoothstep(0.08, 0.34, density)
+                   * (1.0 - smoothstep(0.52, 0.94, density));
+
+    // Occlusion FIRST — the body stands in front of space and darkens it.
+    // Most of the formation stays near-black; brightness is rare.
+    color = mix(color, vec3(0.004, 0.010, 0.006), density * 0.96);
+
+    // The unlit body is NEAR-BLACK GREEN, not invisible: a faint ambient
+    // lift, textured by the micro field, keeps the formation's silhouette
+    // legible against pure black space even where no energy stands.
+    color += vec3(0.016, 0.04, 0.024) * (density * (0.5 + 0.5 * micro));
+
+    // Emission: membranes lit from within + veins where energy is high +
+    // the back sheet glowing through gaps in the front (depth light).
+    // Broad membrane light is SUBORDINATE to the veins now: washes read as
+    // backlit smoke, concentrated fracture light reads as plasma. The micro
+    // multiply breaks any remaining wash into filament-scale structure.
+    float emit = energy * (membrane * 1.05 + vein * energy * 1.7)
+               + energy * backBody * (1.0 - frontBody) * 0.35;
+    emit *= 0.6 + 0.7 * micro;
+    emit = clamp(emit, 0.0, 1.0);
+
+    // The designed ramp. Deep emerald dominates; the yellow-green core is
+    // reserved for the strongest energy and stays under the 0.62 bloom
+    // threshold — the sky never blooms.
+    vec3 glow = vec3(0.016, 0.075, 0.038);
+    glow = mix(glow, vec3(0.045, 0.160, 0.070), smoothstep(0.15, 0.40, emit));
+    glow = mix(glow, vec3(0.130, 0.380, 0.100), smoothstep(0.35, 0.65, emit));
+    glow = mix(glow, vec3(0.320, 0.620, 0.160), smoothstep(0.60, 0.85, emit));
+    glow = mix(glow, vec3(0.440, 0.660, 0.180), smoothstep(0.82, 0.97, emit));
+
+    color += glow * emit;
   }
 
   // --- stars -------------------------------------------------------------
@@ -244,30 +292,49 @@ void main() {
   vec2 cell = floor(grid);
   vec2 frac = fract(grid);
 
+  // Star FIELDS: a large-scale noise reshapes the existence probability, so
+  // the sky carries dense drifts and near-empty pools instead of a uniform
+  // sprinkle — the reference's speckled regions against open black.
+  float clusterN = vnoise(cell * ${f(SKY.stars.cluster.scale)} + 5.0);
+  float prob = uStarProbability
+             * mix(${f(SKY.stars.cluster.min)}, ${f(SKY.stars.cluster.max)},
+                   clusterN * clusterN);
+
   float exists = hash21(cell + 11.7);
-  if (exists < uStarProbability) {
+  if (exists < prob) {
     vec2 jitter = hash22(cell * 1.37);
     float r = hash21(cell + 3.1);
+
+    // A rare few burn brighter and larger — the "named" stars of the frame.
+    float isBright = step(1.0 - ${f(SKY.stars.brightStar.fraction)},
+                          hash21(cell + 27.9));
 
     // Distance in PIXELS, not cell units, so a star is the same size wherever
     // it lands and whatever the viewport aspect is.
     vec2 cellPx = uResolution / uStarGrid;
     float dPx = length((frac - jitter) * cellPx);
 
-    float sizePx = mix(uStarSize.x, uStarSize.y, r);
+    float sizePx = mix(uStarSize.x, uStarSize.y, r)
+                 * mix(1.0, ${f(SKY.stars.brightStar.sizeBoost)}, isBright);
     float core = 1.0 - smoothstep(0.0, sizePx, dPx);
 
     float period = mix(uStarPeriod.x, uStarPeriod.y, hash21(cell + 7.3));
     float phase = hash21(cell + 19.4) * 6.2831853;
     float tw = 1.0 + uStarTwinkle * sin(uTime / period * 6.2831853 + phase);
 
-    float bright = mix(uStarBrightness.x, uStarBrightness.y, r * r) * tw;
+    // Capped AFTER the twinkle and the bright-star boost: even the brightest
+    // star at the top of its twinkle stays under the 0.62 bloom threshold.
+    float bright = mix(uStarBrightness.x, uStarBrightness.y, r * r)
+                 * mix(1.0, ${f(SKY.stars.brightStar.boost)}, isBright);
+    bright = min(bright * tw, ${f(SKY.stars.brightStar.cap)});
 
     // Thinned toward the ridgeline. Terrain draws over the sky anyway, so this
     // only has to stop stars crowding the silhouette from just above it.
     float fade = 1.0 - smoothstep(uStarFalloff.x, uStarFalloff.y, sxy.y);
 
-    color += vec3(bright * core * fade);
+    // Stars live BEHIND the clouds. This one multiply is what turns the
+    // masses from painted glow into weather.
+    color += vec3(bright * core * fade) * (1.0 - cloudBody * 0.93);
   }
 
   // --- shooting stars ------------------------------------------------------
@@ -318,36 +385,66 @@ void main() {
         float w = 1.7 * mScale / uResolution.y;
         float core = exp(-dSeg * dSeg / (2.0 * w * w));
         float life = smoothstep(0.0, 0.1, mp) * (1.0 - smoothstep(0.6, 1.0, mp));
+        // A meteor passing behind a cloud dims behind it, as it should.
         color += vec3(0.82, 1.0, 0.88)
                * (core * h01 * h01 * life
-                  * ${f(SKY.meteors.brightness)} * (0.75 + 0.35 * mScale));
+                  * ${f(SKY.meteors.brightness)} * (0.75 + 0.35 * mScale))
+               * (1.0 - cloudBody * 0.85);
       }
     }
   }
 
   // --- distant ranges — painted silhouettes --------------------------------
   //
-  // Two ridgelines of pure paint just above the horizon, LAST in the stack so
-  // they mask stars, nebula and meteors exactly as real mountains would. The
-  // real terrain draws OVER the sky, so these only ever show where the world
-  // is empty — precisely the holes they exist to fill (the left flank,
-  // between the true ridges). Jagged at two noise scales; near layer darker,
-  // both under the near-black band edge.
+  // THREE ridgelines of pure paint, LAST in the stack so they mask stars,
+  // clouds and meteors exactly as real mountains would. The real terrain
+  // draws OVER the sky, so these only ever show where the world is empty —
+  // the holes they exist to fill. (Client, 2026-08-03 round 2: "the image
+  // has MANY mountains, not one" — a tall rugged back range was added, its
+  // height enveloped by azimuth so it crowds the right flank and the far
+  // left, and stays low in the open middle where the bridge lives.)
+  //
+  // Each range catches the cloud layer's light on its UPPER flank: where
+  // glowField stands overhead the crest glints green and the light dies
+  // downslope; where it does not, the range stays shadow. Same field as the
+  // clouds, so a lit ridge always sits under a lit sky.
   {
     float az = sxy.x;
     float e = dir.y;
 
+    // Back range — tall and rugged, higher right-of-frame and at the far
+    // left edge, low across the bridge's middle.
+    float env3 = (0.45 + 0.55 * vnoise(vec2(az * 1.7, 71.0)))
+               * (0.6 + 0.5 * smoothstep(0.5, 0.95, az)
+                      + 0.35 * (1.0 - smoothstep(0.06, 0.3, az)));
+    float r3 = 0.025 + env3 * (0.075
+      + (vnoise(vec2(az * 4.2 + 7.3, 53.0)) - 0.5) * 0.09
+      + (vnoise(vec2(az * 12.0, 61.0)) - 0.5) * 0.03);
+    float m3 = 1.0 - smoothstep(r3 - 0.004, r3 + 0.008, e);
+    float crest3 = smoothstep(r3 - 0.07, r3, e);
+    vec3 c3 = vec3(0.020, 0.038, 0.028)
+            + uNebulaGlow * (glowField * crest3 * 0.3);
+    color = mix(color, c3, m3 * 0.82);
+
+    // Mid range.
     float r1 = 0.032
       + (vnoise(vec2(az * 5.0 + 3.7, 11.0)) - 0.5) * 0.05
       + (vnoise(vec2(az * 13.0, 23.0)) - 0.5) * 0.02;
     float m1 = 1.0 - smoothstep(r1 - 0.003, r1 + 0.007, e);
-    color = mix(color, vec3(0.016, 0.031, 0.024), m1 * 0.85);
+    float crest1 = smoothstep(r1 - 0.05, r1, e);
+    vec3 c1 = vec3(0.016, 0.031, 0.024)
+            + uNebulaGlow * (glowField * crest1 * 0.2);
+    color = mix(color, c1, m1 * 0.85);
 
+    // Near range — darkest, lowest, barely lit.
     float r2 = 0.016
       + (vnoise(vec2(az * 3.4 + 9.1, 31.0)) - 0.5) * 0.045
       + (vnoise(vec2(az * 9.0 + 4.2, 41.0)) - 0.5) * 0.022;
     float m2 = 1.0 - smoothstep(r2 - 0.003, r2 + 0.007, e);
-    color = mix(color, vec3(0.010, 0.020, 0.017), m2 * 0.9);
+    float crest2 = smoothstep(r2 - 0.04, r2, e);
+    vec3 c2 = vec3(0.010, 0.020, 0.017)
+            + uNebulaGlow * (glowField * crest2 * 0.12);
+    color = mix(color, c2, m2 * 0.9);
   }
 
   gl_FragColor = vec4(color, 1.0);
@@ -357,10 +454,9 @@ void main() {
 export function createSky(): SkyHandle {
   const { colors, heights } = gradientUniforms();
   const stars = SKY.stars;
-  const neb = SKY.nebula;
 
-  // A grid fine enough that the existence probability, rather than the lattice,
-  // is what sets the spacing. 2400 cells at p=0.375 gives the specified 900.
+  // A grid fine enough that the existence probability, rather than the
+  // lattice, is what sets the spacing.
   const gridX = 60;
   const gridY = 40;
 
@@ -371,22 +467,7 @@ export function createSky(): SkyHandle {
       uGradientColor: { value: colors },
       uGradientY: { value: heights },
 
-      uNebulaColor: { value: new THREE.Color(neb.color) },
-      uNebulaOpacity: { value: neb.peakOpacity },
-      uNebulaExtent: {
-        value: new THREE.Vector4(
-          neb.extent.x[0], neb.extent.x[1], neb.extent.y[0], neb.extent.y[1],
-        ),
-      },
-      uNebulaOctaves: {
-        value: neb.octaves.map(([f, a]) => new THREE.Vector3(f, a, 0)),
-      },
-      uNebulaDrift: {
-        value: new THREE.Vector2(...neb.drift.direction).multiplyScalar(
-          neb.drift.speed,
-        ),
-      },
-      uNebulaTurbulence: { value: neb.drift.turbulencePeriod },
+      uNebulaGlow: { value: new THREE.Color(SKY.nebula.glowColor) },
 
       uStarGrid: { value: new THREE.Vector2(gridX, gridY) },
       uStarProbability: { value: stars.count / (gridX * gridY) },
@@ -401,10 +482,6 @@ export function createSky(): SkyHandle {
         value: new THREE.Vector2(...stars.twinkle.periodRange),
       },
       uStarTwinkle: { value: stars.twinkle.amplitude },
-
-      uAuroraLow: { value: new THREE.Color(SKY.aurora.colorLow) },
-      uAuroraHigh: { value: new THREE.Color(SKY.aurora.colorHigh) },
-      uAuroraIntensity: { value: SKY.aurora.intensity },
 
       uInvViewProj: { value: new THREE.Matrix4() },
       uCameraPos: { value: new THREE.Vector3() },

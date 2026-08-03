@@ -167,6 +167,14 @@ for (const [w, h, label] of VIEWPORTS) {
   });
 
   await page.goto(`http://localhost:${PORT}/`, { waitUntil: "load", timeout: 60000 });
+  // Freeze the degradation ladder for the measurement — same reasoning as
+  // palette-check: the spread must compare compositions, not how many rungs
+  // each viewport's slower software render happened to descend.
+  await page.waitForFunction(() => typeof window.__perfFreeze === "function", null, {
+    timeout: 120000,
+    polling: 100,
+  });
+  await page.evaluate(() => window.__perfFreeze(true));
   await page.waitForFunction(() => window.__fade === 1, null, {
     timeout: 120000,
     polling: 100,

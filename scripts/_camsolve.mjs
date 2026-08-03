@@ -9,19 +9,21 @@ import * as THREE from "three";
 
 // --- candidate world (edit alongside config when iterating) ----------------
 const CENTRELINE = [
-  [140, 36, 920],
-  [200, 48, 490],
+  [158, 36, 920],
+  [170, 44, 660],
+  [152, 55, 390],
   [320, 80, 70], // main tower base
   [620, 84, -340], // far tower base
   [900, 62, -590],
 ];
-const TOWER_MAIN = { p: 2, height: 175 };
-const TOWER_FAR = { p: 3, height: 102 };
+const TOWER_MAIN = { p: 3, height: 192 };
+const TOWER_FAR = { p: 4, height: 114 };
 const SAG_RATIO = 0.094;
 
 // --- candidates: [name, pos, target, fov] ----------------------------------
 const CANDIDATES = [
-  ["current", [360, 110, 500], [20, 170, -20], 38],
+  // Camera-correction round (2026-08-03): low over the road start, wide.
+  ["current", [140, 62, 980], [440, 52, -240], 35],
 ];
 
 // Allow overrides from CLI: node _camsolve.mjs px py pz tx ty tz fov
