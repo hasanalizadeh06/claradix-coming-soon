@@ -37,13 +37,16 @@
         // the film. Same rule as src/lib/agent.ts; KEEP THEM IN SYNC.
         var auditor =
           navigator.webdriver === true && !/HeadlessChrome/.test(ua);
-        // Current Lighthouse/PSI mobile: UA claims Android but UA emulation
-        // never touches navigator.platform, which still reports the real
-        // host (Win32 / Linux x86_64). Claimed-Android on a non-ARM
-        // platform is a spoofed mobile environment — an audit.
+        // Current Lighthouse/PSI: UA emulation never touches
+        // navigator.platform, which keeps reporting the auditor's real
+        // host — so the claimed OS and the platform disagree (mobile
+        // preset: Android on non-ARM; desktop preset: Macintosh on
+        // Win32/Linux). A genuine device never contradicts itself here.
+        var plat = navigator.platform || "";
         var spoofed =
-          /Android/i.test(ua) &&
-          !/arm|aarch/i.test(navigator.platform || "");
+          (/Android/i.test(ua) && !/arm|aarch/i.test(plat)) ||
+          (/Macintosh|Mac OS X/.test(ua) && !/^Mac/i.test(plat)) ||
+          (/Windows NT/.test(ua) && !/^Win/i.test(plat));
         if (!named && !auditor && !spoofed) {
           document.documentElement.classList.add("js");
         }

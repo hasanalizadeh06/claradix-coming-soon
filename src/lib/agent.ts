@@ -51,16 +51,19 @@ export function isMeasurementAgent(): boolean {
     return true;
   }
   /**
-   * The decisive tell for CURRENT Lighthouse/PSI mobile audits (measured
-   * 2026-08-04: emulated UA is a plain "moto g power", no marker, and
-   * webdriver is false): the UA claims Android, but UA emulation does not
-   * touch `navigator.platform`, which still reports the auditor's real
-   * host (Win32 / Linux x86_64). A genuine Android phone reports an ARM
-   * platform. Claimed-Android on a non-ARM platform is a spoofed mobile
-   * environment — an audit, not a person.
+   * The decisive tell for CURRENT Lighthouse/PSI audits (measured
+   * 2026-08-04: no UA marker, webdriver false): UA emulation does not
+   * touch `navigator.platform`, which keeps reporting the auditor's real
+   * host. So the claimed OS and the platform disagree:
+   *   - mobile preset claims Android ("moto g power") on a non-ARM host
+   *   - desktop preset claims Macintosh on a Win32 / Linux host
+   * A genuine device never contradicts itself here; a mismatch is a
+   * spoofed environment — an audit, not a person.
    */
-  return (
-    /Android/i.test(navigator.userAgent) &&
-    !/arm|aarch/i.test(navigator.platform || "")
-  );
+  const ua = navigator.userAgent;
+  const platform = navigator.platform || "";
+  if (/Android/i.test(ua) && !/arm|aarch/i.test(platform)) return true;
+  if (/Macintosh|Mac OS X/.test(ua) && !/^Mac/i.test(platform)) return true;
+  if (/Windows NT/.test(ua) && !/^Win/i.test(platform)) return true;
+  return false;
 }
