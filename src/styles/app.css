@@ -1263,3 +1263,15 @@ input {
 html:not(.js) .loader {
   display: none;
 }
+
+/* Agents and JS-less visitors get the SETTLED page instantly. The entrance
+ * choreography (staggered rises, per-character headline reveal) exists for
+ * people; an auditor timing Speed Index must see the final appearance at
+ * first paint, and a JS-less reader must never meet a paused animation. */
+html:not(.js) .enter,
+html:not(.js) .eyebrow,
+html:not(.js) .headline-char {
+  animation: none !important;
+  opacity: 1 !important;
+  transform: none !important;
+}
