@@ -46,7 +46,13 @@ export interface TargetCloud {
 type HeightAt = (x: number, z: number) => number;
 
 interface Sink {
-  push(p: THREE.Vector3, n: THREE.Vector3, layer: Layer, sizeScale?: number): void;
+  push(
+    p: THREE.Vector3,
+    n: THREE.Vector3,
+    layer: Layer,
+    u: number,
+    sizeScale?: number,
+  ): void;
 }
 
 const _p = new THREE.Vector3();
@@ -136,7 +142,7 @@ export function buildTargets(nominal: number, heightAt: HeightAt): TargetCloud {
   let count = 0;
 
   const sink: Sink = {
-    push(p, n, layer, sizeScale = 1) {
+    push(p, n, layer, u, sizeScale = 1) {
       if (count >= nominal) return;
       if (!grid.accept(p.x, p.y, p.z, position)) return;
 
@@ -149,10 +155,13 @@ export function buildTargets(nominal: number, heightAt: HeightAt): TargetCloud {
       normal[o + 2] = n.z;
       sizeScaleArr[count] = sizeScale;
 
-      // `u` from nearestU, never from the sampling parameter: a cable's own
-      // parameter and its projected position along the bridge diverge near the
-      // towers, and using it puts cables in the wrong assembly slot.
-      uArr[count] = centreline.nearestU(p);
+      // `u` is ANALYTIC (2026-08-04 performance pass): both remaining
+      // generators derive their sample position FROM a normalised-arc u, so
+      // they simply hand it over. The old per-target nearestU search — ~50
+      // spline evaluations × every target — was a measurable slice of the
+      // boot's main-thread block and computed the same number the caller
+      // already had.
+      uArr[count] = u;
       layerArr[count] = layerIndex(layer);
 
       grid.record(count, p.x, p.y, p.z);
@@ -269,7 +278,7 @@ function buildCables(sink: Sink, rng: ReturnType<typeof makeRng>, n: number) {
           rise + jx.y,
         );
 
-        sink.push(_p, nrm, "mainCables", 0.6);
+        sink.push(_p, nrm, "mainCables", u, 0.6);
       }
     }
   }
@@ -337,7 +346,7 @@ function buildHangers(sink: Sink, rng: ReturnType<typeof makeRng>, n: number) {
           _t.copy(_p)
             .addScaledVector(binormal, side * lat + rng.jitter(0.05))
             .addScaledVector(nrm, deckLocal + k * length);
-          sink.push(_t, nrm, "hangers", 0.5);
+          sink.push(_t, nrm, "hangers", u, 0.5);
         }
       }
     }

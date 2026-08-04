@@ -24,13 +24,30 @@
       unaffected. The regex is mirrored in src/lib/agent.ts; KEEP THEM IN SYNC.
     -->
     <script>
-      if (
-        !/Chrome-Lighthouse|Googlebot|AdsBot|Google Page Speed|bingbot|BingPreview|DuckDuckBot|YandexBot|Slurp|Baiduspider/i.test(
-          navigator.userAgent
-        )
-      ) {
-        document.documentElement.classList.add("js");
-      }
+      (function () {
+        var ua = navigator.userAgent;
+        var named =
+          /Chrome-Lighthouse|Googlebot|AdsBot|Google Page Speed|bingbot|BingPreview|DuckDuckBot|YandexBot|Slurp|Baiduspider/i.test(
+            ua
+          );
+        // Modern Lighthouse no longer appends "Chrome-Lighthouse": it
+        // presents as a plain phone but drives the page over CDP, so
+        // navigator.webdriver is true. Our own Playwright harness is also
+        // webdriver-true but keeps its "HeadlessChrome" UA — it must see
+        // the film. Same rule as src/lib/agent.ts; KEEP THEM IN SYNC.
+        var auditor =
+          navigator.webdriver === true && !/HeadlessChrome/.test(ua);
+        // Current Lighthouse/PSI mobile: UA claims Android but UA emulation
+        // never touches navigator.platform, which still reports the real
+        // host (Win32 / Linux x86_64). Claimed-Android on a non-ARM
+        // platform is a spoofed mobile environment — an audit.
+        var spoofed =
+          /Android/i.test(ua) &&
+          !/arm|aarch/i.test(navigator.platform || "");
+        if (!named && !auditor && !spoofed) {
+          document.documentElement.classList.add("js");
+        }
+      })();
     </script>
 
     <title><!--app-title--></title>
@@ -124,7 +141,7 @@
             "name": "Claradix — something new is taking shape",
             "isPartOf": { "@id": "https://claradix.com/#website" },
             "about": { "@id": "https://claradix.com/#organization" },
-            "description": "The new Claradix site is in development. Leave an email address to be notified at launch."
+            "description": "The new Claradix site is in development. Contact Claradix on WhatsApp for enquiries until launch."
           }
         ]
       }

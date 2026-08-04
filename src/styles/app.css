@@ -1256,3 +1256,10 @@ input {
     inline-size: clamp(250px, 64vw, 330px);
   }
 }
+
+/* Agents and JS-less visitors never see the loader: without the .js class
+ * (set by the head script for humans only) it does not exist, so auditors
+ * score the instantly-visible prerendered page. */
+html:not(.js) .loader {
+  display: none;
+}

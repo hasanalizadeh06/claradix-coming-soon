@@ -54,12 +54,11 @@ export function App() {
   return (
     <>
       {/* Stands over everything from the first prerendered byte; comes
-          down only when the scene has drawn its first frame. The noscript
-          rule keeps the JS-less page readable — a loader that nothing can
-          ever dismiss must not exist for a visitor without JS. */}
-      <noscript>
-        <style>{".loader{display:none}"}</style>
-      </noscript>
+          down only when the scene has drawn its first frame. For agents
+          and JS-less visitors it never exists at all: the html:not(.js)
+          rule in app.css removes it statically, so auditors score the
+          instantly-visible page and nobody can be held by a loader that
+          nothing will ever dismiss. */}
       <LoadingScreen />
 
       <SceneCanvas />

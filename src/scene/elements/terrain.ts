@@ -170,7 +170,6 @@ export function glowClusterAt(x: number, z: number): number {
   );
 }
 
-const _probe = new THREE.Vector3();
 const _tmp = new THREE.Vector3();
 
 /**
@@ -180,7 +179,17 @@ const _tmp = new THREE.Vector3();
  *
  * Everything is a pure function of (x, z) and the fixed seed. No RNG state.
  */
-function noiseHeight(x: number, z: number): number {
+/**
+ * The MACRO field — warp, ridged ranges, belts, hills, basins. Every term
+ * here is low-frequency (mountain-scale wavelengths), which is what makes
+ * the coarse cache below legitimate: sampled at ~18u cells and read back
+ * bilinearly, it is visually identical at mesh resolution while costing a
+ * ~30× smaller share of the boot's main-thread block (2026-08-04
+ * performance pass — the full composition ran ~40 noise evaluations for
+ * every one of 147k vertices). Micro raggedness, framing accents and the
+ * carve stay exact per-vertex in noiseHeight.
+ */
+function macroHeight(x: number, z: number): number {
   const T = TERRAIN;
   const seed = T.noiseSeed;
 
@@ -231,7 +240,46 @@ function noiseHeight(x: number, z: number): number {
   const basins =
     -v.depth * THREE.MathUtils.smoothstep(vN, v.low, v.high) * (0.35 + 0.65 * depth);
 
-  let h = ranges + hills + basins;
+  return ranges + hills + basins;
+}
+
+const MACRO_N = 160;
+let macroCache: Float32Array | null = null;
+
+function macroAt(x: number, z: number): number {
+  if (!macroCache) {
+    macroCache = new Float32Array(MACRO_N * MACRO_N);
+    const { minX, maxX, minZ, maxZ } = WORLD.bounds;
+    for (let j = 0; j < MACRO_N; j++) {
+      const gz = minZ + ((maxZ - minZ) * j) / (MACRO_N - 1);
+      for (let i = 0; i < MACRO_N; i++) {
+        const gx = minX + ((maxX - minX) * i) / (MACRO_N - 1);
+        macroCache[j * MACRO_N + i] = macroHeight(gx, gz);
+      }
+    }
+  }
+  const { minX, maxX, minZ, maxZ } = WORLD.bounds;
+  const fx = THREE.MathUtils.clamp(
+    ((x - minX) / (maxX - minX)) * (MACRO_N - 1), 0, MACRO_N - 1.001);
+  const fz = THREE.MathUtils.clamp(
+    ((z - minZ) / (maxZ - minZ)) * (MACRO_N - 1), 0, MACRO_N - 1.001);
+  const i = Math.floor(fx);
+  const j = Math.floor(fz);
+  const a = fx - i;
+  const bl = fz - j;
+  const m = macroCache;
+  const idx = j * MACRO_N + i;
+  return (
+    (m[idx] * (1 - a) + m[idx + 1] * a) * (1 - bl) +
+    (m[idx + MACRO_N] * (1 - a) + m[idx + MACRO_N + 1] * a) * bl
+  );
+}
+
+function noiseHeight(x: number, z: number): number {
+  const T = TERRAIN;
+  const seed = T.noiseSeed;
+
+  let h = macroAt(x, z);
 
   // Silhouette raggedness.
   for (let i = 0; i < T.micro.length; i++) {
@@ -263,15 +311,86 @@ function noiseHeight(x: number, z: number): number {
  * partially (85% of the excess) across a wide, soft footprint. What remains
  * reads as a natural pass between shoulders, never as a cut.
  */
+/**
+ * COARSE CORRIDOR FIELD (2026-08-04 performance pass). carveAmount used to
+ * run a full nearestU search — ~50 spline evaluations — for EVERY heightfield
+ * vertex: 384² × 50 ≈ 7.4 million curve samples in one synchronous task,
+ * measured as the dominant share of a 13-second total-blocking-time on a
+ * 4×-throttled CPU (Lighthouse mobile — and therefore also every real
+ * mid-range phone). The carve is a SOFT feature 280u wide; it does not need
+ * per-vertex exactness. A 128×128 grid of (distance-to-centreline, line
+ * height), stamped once from ~900 polyline samples in a few hundred
+ * thousand cheap ops, then read bilinearly, is indistinguishable in the
+ * render and ~40× cheaper.
+ */
+const CD_N = 128;
+let cdD: Float32Array | null = null;
+let cdY: Float32Array | null = null;
+
+function buildCorridorField(): void {
+  if (cdD) return;
+  cdD = new Float32Array(CD_N * CD_N).fill(1e9);
+  cdY = new Float32Array(CD_N * CD_N);
+
+  const { minX, maxX, minZ, maxZ } = WORLD.bounds;
+  const sx = (CD_N - 1) / (maxX - minX);
+  const sz = (CD_N - 1) / (maxZ - minZ);
+  const cellX = (maxX - minX) / (CD_N - 1);
+  const cellZ = (maxZ - minZ) / (CD_N - 1);
+  const reach = TERRAIN.clearance.halfWidth + Math.max(cellX, cellZ) * 2;
+  const wx = Math.ceil(reach / cellX);
+  const wz = Math.ceil(reach / cellZ);
+
+  const p = new THREE.Vector3();
+  const SAMPLES = 900;
+  for (let s = 0; s <= SAMPLES; s++) {
+    centreline.positionAt(s / SAMPLES, p);
+    const ci = Math.round((p.x - minX) * sx);
+    const cj = Math.round((p.z - minZ) * sz);
+    for (let j = Math.max(0, cj - wz); j <= Math.min(CD_N - 1, cj + wz); j++) {
+      const gz = minZ + j / sz;
+      for (let i = Math.max(0, ci - wx); i <= Math.min(CD_N - 1, ci + wx); i++) {
+        const gx = minX + i / sx;
+        const d = Math.hypot(gx - p.x, gz - p.z);
+        const idx = j * CD_N + i;
+        if (d < cdD[idx]) {
+          cdD[idx] = d;
+          cdY[idx] = p.y;
+        }
+      }
+    }
+  }
+}
+
+/** Bilinear read of the corridor field: [distance to centreline, line Y]. */
+function corridorAt(x: number, z: number): [number, number] {
+  buildCorridorField();
+  const { minX, maxX, minZ, maxZ } = WORLD.bounds;
+  const fx = THREE.MathUtils.clamp(
+    ((x - minX) / (maxX - minX)) * (CD_N - 1), 0, CD_N - 1.001);
+  const fz = THREE.MathUtils.clamp(
+    ((z - minZ) / (maxZ - minZ)) * (CD_N - 1), 0, CD_N - 1.001);
+  const i = Math.floor(fx);
+  const j = Math.floor(fz);
+  const a = fx - i;
+  const b = fz - j;
+  const idx = j * CD_N + i;
+  const d = cdD as Float32Array;
+  const y = cdY as Float32Array;
+  const d00 = d[idx], d10 = d[idx + 1], d01 = d[idx + CD_N], d11 = d[idx + CD_N + 1];
+  const y00 = y[idx], y10 = y[idx + 1], y01 = y[idx + CD_N], y11 = y[idx + CD_N + 1];
+  return [
+    (d00 * (1 - a) + d10 * a) * (1 - b) + (d01 * (1 - a) + d11 * a) * b,
+    (y00 * (1 - a) + y10 * a) * (1 - b) + (y01 * (1 - a) + y11 * a) * b,
+  ];
+}
+
 function carveAmount(x: number, z: number, h: number): number {
   const cl = TERRAIN.clearance;
-  _probe.set(x, 0, z);
-  const u = centreline.nearestU(_probe);
-  centreline.positionAt(u, _probe);
-  const dLine = Math.hypot(x - _probe.x, z - _probe.z);
+  const [dLine, lineY] = corridorAt(x, z);
   if (dLine >= cl.halfWidth) return 0;
 
-  const needed = Math.max(0, h - (_probe.y - cl.margin));
+  const needed = Math.max(0, h - (lineY - cl.margin));
   const fall =
     1 - THREE.MathUtils.smoothstep(dLine / cl.halfWidth, cl.innerFrac, 1);
   return needed * cl.strength * fall;
