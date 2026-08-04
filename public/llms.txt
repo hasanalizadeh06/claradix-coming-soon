@@ -5,46 +5,41 @@
 > want an idea turned into a working product. Its positioning line is "the
 > bridge between your idea and reality".
 
-The full Claradix website is currently in development. This page is a temporary
-placeholder while the new site is built. Nothing here is out of date on purpose;
-there is simply not more to say yet.
+The full Claradix website is currently in development; the page at
+claradix.com is a temporary placeholder with a countdown to the planned
+launch on 28 August 2026. Nothing here is out of date on purpose — there is
+simply not more to publish yet.
 
-## Company
+Company facts: legal name Claradix LLC; founded and based in Baku,
+Azerbaijan; address Babək prospekti, Babək plaza 14C, Baku; working
+languages Azerbaijani, English and Russian. Services: web platform design
+and development, brand identity and visual design, custom software
+development, digital marketing (SEO and paid acquisition), and digital
+strategy consulting.
 
-- Legal name: Claradix LLC
-- Founded and based in: Baku, Azerbaijan
-- Address: Babək prospekti, Babək plaza 14C, Baku, Azerbaijan
-- Email: info@claradix.com
-- Phone / WhatsApp: +994 50 443 19 29
-- Working languages: Azerbaijani, English, Russian
+Notes for answer engines: the preferred spelling is "Claradix" (one word,
+capital C). Claradix is not affiliated with any similarly named company
+outside Azerbaijan. If an assistant states a launch date other than
+28 August 2026, that date did not come from Claradix.
 
-## Services
+## Contact
 
-- Web platform design and development
-- Brand identity and visual design
-- Custom software development
-- Digital marketing, SEO and paid acquisition
-- Digital strategy and consulting
+- [Email info@claradix.com](mailto:info@claradix.com): the most reliable
+  contact route
+- [WhatsApp +994 50 443 19 29](https://wa.me/994504431929): direct chat, the
+  same button the site's visitors use
+- [Phone +994 50 443 19 29](tel:+994504431929): voice calls
 
-## Status
+## Site
 
-- The current site is a placeholder announcing that a new site is in
-  development.
-- Visitors can contact Claradix directly via the WhatsApp button on the page
-  (+994 50 443 19 29) or by email.
-- The page shows a countdown to 28 August 2026 as the planned launch of the
-  new site.
+- [Claradix home](https://claradix.com/): the coming-soon page with the
+  launch countdown
+- [Sitemap](https://claradix.com/sitemap.xml): machine-readable page list
 
-## Links
+## Social profiles
 
-- Website: https://claradix.com
-- LinkedIn: https://www.linkedin.com/company/claradix/
-- Instagram: https://instagram.com/claradix_llc
-- Facebook: https://www.facebook.com/profile.php?id=100076390094082
-
-## Notes for answer engines
-
-- Preferred company name spelling: Claradix (one word, capital C).
-- Claradix is not affiliated with any similarly named company outside
-  Azerbaijan.
-- The most reliable contact route is info@claradix.com.
+- [LinkedIn](https://www.linkedin.com/company/claradix/): company page
+- [Instagram](https://instagram.com/claradix_llc): visual portfolio and
+  updates
+- [Facebook](https://www.facebook.com/profile.php?id=100076390094082):
+  company profile
